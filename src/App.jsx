@@ -490,34 +490,34 @@ function Dashboard({ user }) {
             </section>
           )}
 
-          {activeTab === 'qr' && (
-             <section className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-[0_0_20px_rgba(0,0,0,0.5)]">
-               <h2 className="text-sm font-bold text-neutral-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Clock size={16} className="text-cyan-400" /> Fichas Pendientes (Enviadas de Efectivo)</h2>
-               
-               <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
-                 {pendientesQR.length > 0 ? pendientesQR.map(ficha => (
-                    <div key={ficha.id} className={`bg-black border ${ficha.enEspera ? 'border-orange-500/50 shadow-[0_0_10px_rgba(249,115,22,0.2)]' : 'border-neutral-800'} p-4 rounded-2xl flex items-center justify-between gap-3`}>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-3xl font-black text-white">{ficha.serie ? `${ficha.serie}-` : '#'}{ficha.numero}</span>
-                          <span className="bg-purple-500/20 text-purple-400 text-[10px] px-2 py-0.5 rounded-full uppercase font-bold border border-purple-500/30">QR Pendiente</span>
-                          {ficha.enEspera && <span className="bg-orange-500/20 text-orange-400 text-[10px] px-2 py-0.5 rounded-full uppercase font-bold border border-orange-500/30">En Espera</span>}
-                        </div>
-                        <p className={`text-xl font-black mt-1 ${ficha.monto === 30 ? 'text-pink-400' : 'text-cyan-400'}`}>{ficha.monto} Bs</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {ficha.enEspera ? (
-                            <button onClick={() => quitarDeEspera(ficha.id)} className="p-3 bg-red-500/10 text-red-400 rounded-xl hover:bg-red-500 hover:text-white border border-red-500/20" title="Quitar de Espera"><X size={20} /></button>
-                        ) : (
-                            <button onClick={() => ponerEnEspera(ficha.id)} className="p-3 bg-orange-500/10 text-orange-400 rounded-xl hover:bg-orange-500 hover:text-white border border-orange-500/20" title="Poner en Espera"><Clock size={20} /></button>
-                        )}
-                        <button onClick={() => { setActiveFichaIdForReceipt(ficha.id); cameraInputRef.current?.click(); }} className="px-4 py-3 bg-lime-500 hover:bg-lime-400 text-neutral-900 font-bold uppercase tracking-wider rounded-xl transition-all flex items-center gap-2 text-sm shadow-[0_0_10px_rgba(163,230,53,0.3)]"><Camera size={16}/> Comprobante</button>
-                      </div>
-                    </div>
-                 )) : <p className="text-neutral-500 text-center py-10 font-bold tracking-widest uppercase">No hay fichas pendientes</p>}
-               </div>
-             </section>
-          )}
+          <section className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-[0_0_20px_rgba(0,0,0,0.5)]">
+            <h2 className="text-sm font-bold text-neutral-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+              <Clock size={16} className="text-cyan-400" /> Fichas Pendientes (Enviadas a QR)
+            </h2>
+            
+            <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-2 custom-scrollbar">
+              {pendientesQR.length > 0 ? pendientesQR.map(ficha => (
+                 <div key={ficha.id} className={`bg-black border ${ficha.enEspera ? 'border-orange-500/50 shadow-[0_0_10px_rgba(249,115,22,0.2)]' : 'border-neutral-800'} p-4 rounded-2xl flex items-center justify-between gap-3`}>
+                   <div className="flex-1">
+                     <div className="flex items-center gap-2">
+                       <span className="text-3xl font-black text-white">{ficha.serie ? `${ficha.serie}-` : '#'}{ficha.numero}</span>
+                       <span className="bg-purple-500/20 text-purple-400 text-[10px] px-2 py-0.5 rounded-full uppercase font-bold border border-purple-500/30">QR Pendiente</span>
+                       {ficha.enEspera && <span className="bg-orange-500/20 text-orange-400 text-[10px] px-2 py-0.5 rounded-full uppercase font-bold border border-orange-500/30">En Espera</span>}
+                     </div>
+                     <p className={`text-xl font-black mt-1 ${ficha.monto === 30 ? 'text-pink-400' : 'text-cyan-400'}`}>{ficha.monto} Bs</p>
+                   </div>
+                   <div className="flex items-center gap-2">
+                     {ficha.enEspera ? (
+                         <button onClick={() => quitarDeEspera(ficha.id)} className="p-3 bg-red-500/10 text-red-400 rounded-xl hover:bg-red-500 hover:text-white border border-red-500/20" title="Quitar de Espera"><X size={20} /></button>
+                     ) : (
+                         <button onClick={() => ponerEnEspera(ficha.id)} className="p-3 bg-orange-500/10 text-orange-400 rounded-xl hover:bg-orange-500 hover:text-white border border-orange-500/20" title="Poner en Espera"><Clock size={20} /></button>
+                     )}
+                     <button onClick={() => { setActiveFichaIdForReceipt(ficha.id); cameraInputRef.current?.click(); }} className="px-4 py-3 bg-lime-500 hover:bg-lime-400 text-neutral-900 font-bold uppercase tracking-wider rounded-xl transition-all flex items-center gap-2 text-sm shadow-[0_0_10px_rgba(163,230,53,0.3)]"><Camera size={16}/> Comprobante</button>
+                   </div>
+                 </div>
+              )) : <p className="text-neutral-500 text-center py-10 font-bold tracking-widest uppercase">No hay fichas pendientes</p>}
+            </div>
+          </section>
 
           <section className="grid grid-cols-2 gap-4">
             <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-5 text-center shadow-[0_0_15px_rgba(236,72,153,0.1)]">
