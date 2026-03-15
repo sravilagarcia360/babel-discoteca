@@ -289,6 +289,24 @@ function Dashboard({ user }) {
     } finally { setFichaToDelete(null); }
   };
 
+  const limpiarHistorial = async () => {
+    const confirm = window.confirm("¿ESTÁS TOTALMENTE SEGURO? Esta acción eliminará TODAS las fichas del historial de forma permanente. No se puede deshacer.");
+    if (!confirm) return;
+    
+    setIsUploading(true);
+    try {
+      // Iterar sobre las fichas actuales para eliminarlas
+      const deletePromises = fichas.map(f => deleteDoc(doc(db, `${basePath}/fichas`, f.id)));
+      await Promise.all(deletePromises);
+      showMessage("Éxito", "Todo el historial ha sido borrado.", "success");
+    } catch (error) {
+      console.error("Error al limpiar historial:", error);
+      showMessage("Error", "Hubo un problema al intentar borrar el historial.", "error");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const handleReceiptSelection = async (e) => {
     const file = e.target.files?.[0];
     const targetIds = activeFichaIdForReceipt ? [activeFichaIdForReceipt] : [];
@@ -399,13 +417,17 @@ function Dashboard({ user }) {
   const exportarExcel = () => {
     if (!window.XLSX) { showMessage("Aviso", "Cargando librería, intenta de nuevo.", "info"); return; }
     const data = fichas.map(f => ({
-      'Ficha Nº': f.numero, 'Monto (Bs)': f.monto, 'Estado': f.estado,
-      'Fecha': new Date(f.createdAt).toLocaleString(), 'Comprobante': f.comprobanteUrl ? 'Sí' : 'No'
+      'Ficha': f.serie ? `${f.serie}-${f.numero}` : f.numero, 
+      'Monto (Bs)': f.monto, 
+      'Estado': f.estado,
+      'Método': f.metodo,
+      'Fecha': new Date(f.createdAt).toLocaleString(), 
+      'Comprobante': f.comprobanteUrl ? 'Sí' : 'No'
     }));
     const ws = window.XLSX.utils.json_to_sheet(data);
     const wb = window.XLSX.utils.book_new();
     window.XLSX.utils.book_append_sheet(wb, ws, "Transacciones");
-    window.XLSX.writeFile(wb, `Fichas_${new Date().toLocaleDateString()}.xlsx`);
+    window.XLSX.writeFile(wb, `Fichas_Babel_${new Date().toLocaleDateString()}.xlsx`);
   };
 
   return (
@@ -569,9 +591,14 @@ function Dashboard({ user }) {
 
         {/* COLUMNA DERECHA (Historial) */}
         <div className="lg:col-span-5 bg-neutral-900/40 border border-neutral-800 rounded-3xl p-6 lg:h-[80vh] flex flex-col">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-sm font-bold text-neutral-400 uppercase tracking-widest">Historial de {activeTab}</h2>
-            <button onClick={exportarExcel} className="flex items-center gap-1 text-xs font-bold bg-lime-400/10 text-lime-400 px-3 py-1.5 rounded-lg border border-lime-400/20 uppercase"><Download size={14} /> Exportar</button>
+          <div className="flex flex-col gap-4 mb-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-sm font-bold text-neutral-400 uppercase tracking-widest">Historial de {activeTab}</h2>
+              <div className="flex gap-2">
+                <button onClick={exportarExcel} className="flex items-center gap-1 text-xs font-bold bg-lime-400/10 text-lime-400 px-3 py-1.5 rounded-lg border border-lime-400/20 uppercase hover:bg-lime-400 hover:text-neutral-900 transition-all"><Download size={14} /> Excel</button>
+                <button onClick={limpiarHistorial} className="flex items-center gap-1 text-xs font-bold bg-red-400/10 text-red-400 px-3 py-1.5 rounded-lg border border-red-400/20 uppercase hover:bg-red-500 hover:text-white transition-all"><Trash2 size={14} /> Limpiar</button>
+              </div>
+            </div>
           </div>
           <div className="space-y-3 overflow-y-auto pr-2 flex-1 custom-scrollbar">
             {fichasHistorial.slice(0, 50).map((ficha) => (
