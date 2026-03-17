@@ -70,10 +70,10 @@ function LoginScreen() {
 
   return (
     <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center p-6 text-white font-sans overflow-hidden relative">
-      <style dangerouslySetInnerHTML={{__html: `@keyframes rainbowMove { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } } .animate-rainbow { background-size: 200% 200%; animation: rainbowMove 4s ease infinite; }`}} />
+      <style dangerouslySetInnerHTML={{ __html: `@keyframes rainbowMove { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } } .animate-rainbow { background-size: 200% 200%; animation: rainbowMove 4s ease infinite; }` }} />
       <div className="absolute top-0 left-1/4 w-96 h-96 bg-purple-600/20 rounded-full blur-[100px]"></div>
       <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-cyan-600/20 rounded-full blur-[100px]"></div>
-      
+
       <div className="w-full max-w-md bg-neutral-900/60 p-8 rounded-3xl border border-neutral-800 shadow-[0_0_50px_rgba(255,0,128,0.15)] backdrop-blur-md relative z-10">
         <div className="text-center mb-10">
           <Zap className="mx-auto text-yellow-400 mb-4 drop-shadow-[0_0_15px_rgba(250,204,21,0.8)]" size={48} />
@@ -113,6 +113,7 @@ function Dashboard({ user }) {
 
   // Estado del Carrito / Acumulador
   const [carrito, setCarrito] = useState([]); // [{ numero: 1, monto: 30 }, ...]
+  const [selectedPendientes, setSelectedPendientes] = useState(new Set());
 
   // Nuevo talonario (para configurarlo manualmente)
   const [showConfigTalonario, setShowConfigTalonario] = useState(false);
@@ -162,16 +163,16 @@ function Dashboard({ user }) {
         img.src = event.target.result;
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          const MAX_WIDTH = 600; 
+          const MAX_WIDTH = 600;
           let scaleSize = 1;
           if (img.width > MAX_WIDTH) scaleSize = MAX_WIDTH / img.width;
-          
+
           canvas.width = img.width * scaleSize;
           canvas.height = img.height * scaleSize;
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          
-          const base64Data = canvas.toDataURL('image/jpeg', 0.5); 
+
+          const base64Data = canvas.toDataURL('image/jpeg', 0.5);
           resolve(base64Data);
         };
         img.onerror = (error) => reject(error);
@@ -183,35 +184,35 @@ function Dashboard({ user }) {
   const guardarTalonario = async () => {
     const numActual = parseInt(formTalonario.inicial);
     const capacidad = parseInt(formTalonario.capacidad);
-    
-    if (isNaN(numActual) || numActual < 1 || isNaN(capacidad) || capacidad < 1) { 
-      showMessage("Error", "Ingresa números válidos mayores a 0", "warning"); 
-      return; 
+
+    if (isNaN(numActual) || numActual < 1 || isNaN(capacidad) || capacidad < 1) {
+      showMessage("Error", "Ingresa números válidos mayores a 0", "warning");
+      return;
     }
-    
+
     const limite = numActual + capacidad - 1;
 
     try {
-      await setDoc(settingsDocRef, { 
-        numeroTalonarioActual: numActual, 
-        limiteTalonario: limite, 
-        talonarioSerie: formTalonario.serie 
+      await setDoc(settingsDocRef, {
+        numeroTalonarioActual: numActual,
+        limiteTalonario: limite,
+        talonarioSerie: formTalonario.serie
       }, { merge: true });
       showMessage("Éxito", "Talonario nuevo configurado correctamente.", "success");
       setShowConfigTalonario(false);
     } catch (error) {
-       showMessage("Error", "Fallo al guardar el talonario.", "error");
+      showMessage("Error", "Fallo al guardar el talonario.", "error");
     }
   };
 
   const agregarAlCarrito = (monto) => {
     const numFicha = settings.numeroTalonarioActual + carrito.length;
-    
+
     if (numFicha > settings.limiteTalonario) {
       showMessage("Talonario Agotado", `Has alcanzado el límite (${settings.limiteTalonario}) de este talonario. Por favor configura uno nuevo.`, "warning");
       return;
     }
-    
+
     setCarrito([...carrito, { numero: numFicha, monto, serie: settings.talonarioSerie || '' }]);
   };
 
@@ -221,22 +222,42 @@ function Dashboard({ user }) {
     setCarrito(newCarrito);
   };
 
+  const toggleSelection = (id) => {
+    const newSelection = new Set(selectedPendientes);
+    if (newSelection.has(id)) {
+      newSelection.delete(id);
+    } else {
+      newSelection.add(id);
+    }
+    setSelectedPendientes(newSelection);
+  };
+
+  const handleBulkReceipt = () => {
+    if (selectedPendientes.size === 0) return;
+    setActiveFichaIdForReceipt(null); // No es una sola ficha
+    const targetIds = Array.from(selectedPendientes);
+    // Necesitamos que el selector de archivos sepa que son varias
+    // Usamos una variable temporal o pasamos los IDs directamente si fuera posible, 
+    // pero el flujo actual usa activeFichaIdForReceipt. Vamos a ajustarlo.
+    cameraInputRef.current?.click();
+  };
+
   const procesarCarrito = async (metodo) => { // metodo: 'Efectivo' o 'QR'
     if (carrito.length === 0) return;
-    
+
     setIsUploading(true);
     try {
       const estado = metodo === 'Efectivo' ? 'Pagado' : 'Pendiente';
-      
+
       const promesas = carrito.map(item =>
-        addDoc(fichasRef, { 
-          numero: item.numero, 
+        addDoc(fichasRef, {
+          numero: item.numero,
           serie: item.serie,
-          monto: item.monto, 
-          estado: estado, 
-          metodo: metodo, 
-          comprobanteUrl: null, 
-          createdAt: Date.now() 
+          monto: item.monto,
+          estado: estado,
+          metodo: metodo,
+          comprobanteUrl: null,
+          createdAt: Date.now()
         })
       );
       await Promise.all(promesas);
@@ -244,15 +265,15 @@ function Dashboard({ user }) {
       // Actualizar talonario actual
       const nuevoNumero = settings.numeroTalonarioActual + carrito.length;
       await setDoc(settingsDocRef, { numeroTalonarioActual: nuevoNumero }, { merge: true });
-      
+
       let msg = metodo === 'Efectivo' ? "Cobro registrado en Efectivo." : "Enviado a Caja QR como pendiente.";
       let tipoMsg = metodo === 'Efectivo' ? "success" : "info";
-      
+
       if (nuevoNumero > settings.limiteTalonario) {
         msg += " ¡Atención! El talonario se ha agotado. Crea uno nuevo para seguir operando.";
         tipoMsg = "warning";
       }
-      
+
       showMessage("Operación Exitosa", msg, tipoMsg);
       setCarrito([]);
     } catch (error) {
@@ -275,7 +296,7 @@ function Dashboard({ user }) {
     try {
       await updateDoc(doc(db, `${basePath}/fichas`, id), { enEspera: false });
     } catch (error) {
-        showMessage("Error", "No se pudo actualizar.", "error");
+      showMessage("Error", "No se pudo actualizar.", "error");
     }
   };
 
@@ -292,7 +313,7 @@ function Dashboard({ user }) {
   const limpiarHistorial = async () => {
     const confirm = window.confirm("¿ESTÁS TOTALMENTE SEGURO? Esta acción eliminará TODAS las fichas del historial de forma permanente. No se puede deshacer.");
     if (!confirm) return;
-    
+
     setIsUploading(true);
     try {
       // Iterar sobre las fichas actuales para eliminarlas
@@ -309,7 +330,13 @@ function Dashboard({ user }) {
 
   const handleReceiptSelection = async (e) => {
     const file = e.target.files?.[0];
-    const targetIds = activeFichaIdForReceipt ? [activeFichaIdForReceipt] : [];
+    let targetIds = [];
+    if (activeFichaIdForReceipt) {
+      targetIds = [activeFichaIdForReceipt];
+    } else if (selectedPendientes.size > 0) {
+      targetIds = Array.from(selectedPendientes);
+    }
+
     if (!file || targetIds.length === 0) return;
 
     setIsUploading(true);
@@ -333,7 +360,7 @@ function Dashboard({ user }) {
       );
       await Promise.all(updatePromises);
       showMessage("Éxito", "Comprobante guardado en base de datos. Imagen descargada.", "success");
-      
+
       // Intentar forzar descarga
       try {
         const link = document.createElement("a");
@@ -346,13 +373,14 @@ function Dashboard({ user }) {
       } catch (err) {
         console.error("No se pudo descargar automáticamente: ", err);
       }
-      
+
     } catch (error) {
       showMessage("Error", "Error al guardar el comprobante.", "error");
     } finally {
       setIsUploading(false);
       setReceiptPreview({ file: null, base64: null, targetIds: [] });
       setActiveFichaIdForReceipt(null);
+      setSelectedPendientes(new Set());
     }
   };
 
@@ -399,10 +427,10 @@ function Dashboard({ user }) {
       // Filtrar por el tab activo
       if (activeTab === 'efectivo' && f.metodo !== 'Efectivo') return;
       if (activeTab === 'qr' && f.metodo !== 'QR') return;
-      
+
       if (f.estado === 'Pagado') {
-        if (f.monto === 30) total30++; 
-        if (f.monto === 40) total40++; 
+        if (f.monto === 30) total30++;
+        if (f.monto === 40) total40++;
       } else if (f.estado === 'Pendiente') {
         totalPendientes++;
       }
@@ -417,11 +445,11 @@ function Dashboard({ user }) {
   const exportarExcel = () => {
     if (!window.XLSX) { showMessage("Aviso", "Cargando librería, intenta de nuevo.", "info"); return; }
     const data = fichas.map(f => ({
-      'Ficha': f.serie ? `${f.serie}-${f.numero}` : f.numero, 
-      'Monto (Bs)': f.monto, 
+      'Ficha': f.serie ? `${f.serie}-${f.numero}` : f.numero,
+      'Monto (Bs)': f.monto,
       'Estado': f.estado,
       'Método': f.metodo,
-      'Fecha': new Date(f.createdAt).toLocaleString(), 
+      'Fecha': new Date(f.createdAt).toLocaleString(),
       'Comprobante': f.comprobanteUrl ? 'Sí' : 'No'
     }));
     const ws = window.XLSX.utils.json_to_sheet(data);
@@ -432,11 +460,11 @@ function Dashboard({ user }) {
 
   return (
     <div className="min-h-screen bg-neutral-950 text-white font-sans pb-24 overflow-x-hidden selection:bg-pink-500/30">
-      <style dangerouslySetInnerHTML={{__html: `@keyframes rainbowMove { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } } .animate-rainbow { background-size: 200% 200%; animation: rainbowMove 4s ease infinite; }`}} />
+      <style dangerouslySetInnerHTML={{ __html: `@keyframes rainbowMove { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } } .animate-rainbow { background-size: 200% 200%; animation: rainbowMove 4s ease infinite; }` }} />
 
       <header className="sticky top-0 z-50 bg-neutral-950/80 backdrop-blur-md border-b border-neutral-800 p-4 flex flex-col sm:flex-row justify-between items-center sm:h-20 gap-4 shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
         <h1 className="text-2xl font-black uppercase tracking-widest bg-clip-text text-transparent bg-gradient-to-r from-red-500 via-yellow-400 via-lime-400 via-cyan-400 to-purple-500 animate-rainbow">BABEL</h1>
-        
+
         {/* TAB SELECTOR */}
         <div className="flex bg-neutral-900 border border-neutral-800 rounded-xl p-1">
           <button onClick={() => setActiveTab('efectivo')} className={`px-6 py-2 rounded-lg font-bold uppercase tracking-wider text-sm transition-all ${activeTab === 'efectivo' ? 'bg-pink-500 text-white shadow-[0_0_15px_rgba(236,72,153,0.4)]' : 'text-neutral-500 hover:text-white'}`}>
@@ -453,7 +481,7 @@ function Dashboard({ user }) {
       <main className="max-w-7xl mx-auto p-4 lg:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8 mt-4">
         {/* COLUMNA IZQUIERDA (Controles) */}
         <div className="lg:col-span-7 space-y-8">
-          
+
           {activeTab === 'efectivo' && (
             <section className="bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-[0_0_20px_rgba(0,0,0,0.5)] relative overflow-hidden">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
@@ -467,13 +495,13 @@ function Dashboard({ user }) {
               </div>
 
               <div className="text-center mb-6">
-                 <p className="text-neutral-500 font-bold uppercase text-xs tracking-widest mb-2">Ficha Actual a Emitir</p>
-                 <span className="text-6xl font-black text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">
-                   {settings.talonarioSerie && <span className="text-3xl text-neutral-500 mr-2">{settings.talonarioSerie}-</span>}
-                   {settings.numeroTalonarioActual > (settings.limiteTalonario || 100) ? 'Agotado' : settings.numeroTalonarioActual + carrito.length}
-                 </span>
+                <p className="text-neutral-500 font-bold uppercase text-xs tracking-widest mb-2">Ficha Actual a Emitir</p>
+                <span className="text-6xl font-black text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">
+                  {settings.talonarioSerie && <span className="text-3xl text-neutral-500 mr-2">{settings.talonarioSerie}-</span>}
+                  {settings.numeroTalonarioActual > (settings.limiteTalonario || 100) ? 'Agotado' : settings.numeroTalonarioActual + carrito.length}
+                </span>
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <NeonButton color="pink" onClick={() => agregarAlCarrito(30)} disabled={settings.numeroTalonarioActual > (settings.limiteTalonario || 100)} className="h-20 flex-col text-xl">+ 30 Bs</NeonButton>
                 <NeonButton color="cyan" onClick={() => agregarAlCarrito(40)} disabled={settings.numeroTalonarioActual > (settings.limiteTalonario || 100)} className="h-20 flex-col text-xl">+ 40 Bs</NeonButton>
@@ -488,24 +516,24 @@ function Dashboard({ user }) {
                         <span className="font-bold text-neutral-300">Ficha {item.serie ? `${item.serie}-` : '#'}{item.numero}</span>
                         <div className="flex items-center gap-3">
                           <span className={item.monto === 30 ? 'text-pink-400 font-black' : 'text-cyan-400 font-black'}>{item.monto} Bs</span>
-                          <button onClick={() => quitarDelCarrito(idx)} className="text-neutral-500 hover:text-red-400 transition-colors"><X size={16}/></button>
+                          <button onClick={() => quitarDelCarrito(idx)} className="text-neutral-500 hover:text-red-400 transition-colors"><X size={16} /></button>
                         </div>
                       </div>
                     ))}
                   </div>
-                  
+
                   <div className="flex justify-between items-center mb-4 px-2">
                     <span className="text-neutral-500 text-xs uppercase font-bold">Total a cobrar:</span>
                     <span className="text-2xl font-black text-white">{carrito.reduce((acc, curr) => acc + curr.monto, 0)} Bs</span>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
-                     <button onClick={() => procesarCarrito('Efectivo')} className="bg-lime-500 hover:bg-lime-400 text-neutral-900 font-black uppercase tracking-wider py-3 rounded-xl transition-all shadow-[0_0_15px_rgba(163,230,53,0.3)]">
-                       Cobrar Efectivo
-                     </button>
-                     <button onClick={() => procesarCarrito('QR')} className="bg-purple-500 hover:bg-purple-400 text-white font-black uppercase tracking-wider py-3 rounded-xl transition-all shadow-[0_0_15px_rgba(168,85,247,0.3)]">
-                       Enviar a QR
-                     </button>
+                    <button onClick={() => procesarCarrito('Efectivo')} className="bg-lime-500 hover:bg-lime-400 text-neutral-900 font-black uppercase tracking-wider py-3 rounded-xl transition-all shadow-[0_0_15px_rgba(163,230,53,0.3)]">
+                      Cobrar Efectivo
+                    </button>
+                    <button onClick={() => procesarCarrito('QR')} className="bg-purple-500 hover:bg-purple-400 text-white font-black uppercase tracking-wider py-3 rounded-xl transition-all shadow-[0_0_15px_rgba(168,85,247,0.3)]">
+                      Enviar a QR
+                    </button>
                   </div>
                 </div>
               )}
@@ -516,28 +544,52 @@ function Dashboard({ user }) {
             <h2 className="text-sm font-bold text-neutral-400 uppercase tracking-widest mb-4 flex items-center gap-2">
               <Clock size={16} className="text-cyan-400" /> Fichas Pendientes (Enviadas a QR)
             </h2>
-            
+
             <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-2 custom-scrollbar">
-              {pendientesQR.length > 0 ? pendientesQR.map(ficha => (
-                 <div key={ficha.id} className={`bg-black border ${ficha.enEspera ? 'border-orange-500/50 shadow-[0_0_10px_rgba(249,115,22,0.2)]' : 'border-neutral-800'} p-4 rounded-2xl flex items-center justify-between gap-3`}>
-                   <div className="flex-1">
-                     <div className="flex items-center gap-2">
-                       <span className="text-3xl font-black text-white">{ficha.serie ? `${ficha.serie}-` : '#'}{ficha.numero}</span>
-                       <span className="bg-purple-500/20 text-purple-400 text-[10px] px-2 py-0.5 rounded-full uppercase font-bold border border-purple-500/30">QR Pendiente</span>
-                       {ficha.enEspera && <span className="bg-orange-500/20 text-orange-400 text-[10px] px-2 py-0.5 rounded-full uppercase font-bold border border-orange-500/30">En Espera</span>}
-                     </div>
-                     <p className={`text-xl font-black mt-1 ${ficha.monto === 30 ? 'text-pink-400' : 'text-cyan-400'}`}>{ficha.monto} Bs</p>
-                   </div>
-                   <div className="flex items-center gap-2">
-                     {ficha.enEspera ? (
-                         <button onClick={() => quitarDeEspera(ficha.id)} className="p-3 bg-red-500/10 text-red-400 rounded-xl hover:bg-red-500 hover:text-white border border-red-500/20" title="Quitar de Espera"><X size={20} /></button>
-                     ) : (
-                         <button onClick={() => ponerEnEspera(ficha.id)} className="p-3 bg-orange-500/10 text-orange-400 rounded-xl hover:bg-orange-500 hover:text-white border border-orange-500/20" title="Poner en Espera"><Clock size={20} /></button>
-                     )}
-                     <button onClick={() => { setActiveFichaIdForReceipt(ficha.id); cameraInputRef.current?.click(); }} className="px-4 py-3 bg-lime-500 hover:bg-lime-400 text-neutral-900 font-bold uppercase tracking-wider rounded-xl transition-all flex items-center gap-2 text-sm shadow-[0_0_10px_rgba(163,230,53,0.3)]"><Camera size={16}/> Comprobante</button>
-                   </div>
-                 </div>
-              )) : <p className="text-neutral-500 text-center py-10 font-bold tracking-widest uppercase">No hay fichas pendientes</p>}
+              {pendientesQR.length > 0 ? (
+                <>
+                  <div className="flex justify-between items-center mb-2 px-1">
+                    <button
+                      onClick={() => setSelectedPendientes(selectedPendientes.size === pendientesQR.length ? new Set() : new Set(pendientesQR.map(f => f.id)))}
+                      className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 hover:text-cyan-400 transition-colors"
+                    >
+                      {selectedPendientes.size === pendientesQR.length ? 'Deseleccionar Todos' : 'Seleccionar Todos'}
+                    </button>
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-500">
+                      {selectedPendientes.size} seleccionados
+                    </span>
+                  </div>
+                  {pendientesQR.map(ficha => (
+                    <div
+                      key={ficha.id}
+                      onClick={() => toggleSelection(ficha.id)}
+                      className={`bg-black border cursor-pointer transition-all ${selectedPendientes.has(ficha.id) ? 'border-cyan-500 shadow-[0_0_15px_rgba(34,211,238,0.2)] scale-[1.01]' : ficha.enEspera ? 'border-orange-500/50 shadow-[0_0_10px_rgba(249,115,22,0.2)]' : 'border-neutral-800'} p-4 rounded-2xl flex items-center justify-between gap-3`}
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-colors ${selectedPendientes.has(ficha.id) ? 'bg-cyan-500 border-cyan-500' : 'border-neutral-700'}`}>
+                          {selectedPendientes.has(ficha.id) && <Check size={14} className="text-neutral-900" strokeWidth={4} />}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-3xl font-black text-white">{ficha.serie ? `${ficha.serie}-` : '#'}{ficha.numero}</span>
+                            <span className="bg-purple-500/20 text-purple-400 text-[10px] px-2 py-0.5 rounded-full uppercase font-bold border border-purple-500/30">QR Pendiente</span>
+                            {ficha.enEspera && <span className="bg-orange-500/20 text-orange-400 text-[10px] px-2 py-0.5 rounded-full uppercase font-bold border border-orange-500/30">En Espera</span>}
+                          </div>
+                          <p className={`text-xl font-black mt-1 ${ficha.monto === 30 ? 'text-pink-400' : 'text-cyan-400'}`}>{ficha.monto} Bs</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                        {ficha.enEspera ? (
+                          <button onClick={() => quitarDeEspera(ficha.id)} className="p-3 bg-red-500/10 text-red-400 rounded-xl hover:bg-red-500 hover:text-white border border-red-500/20" title="Quitar de Espera"><X size={20} /></button>
+                        ) : (
+                          <button onClick={() => ponerEnEspera(ficha.id)} className="p-3 bg-orange-500/10 text-orange-400 rounded-xl hover:bg-orange-500 hover:text-white border border-orange-500/20" title="Poner en Espera"><Clock size={20} /></button>
+                        )}
+                        <button onClick={() => { setActiveFichaIdForReceipt(ficha.id); cameraInputRef.current?.click(); }} className="px-4 py-3 bg-lime-500 hover:bg-lime-400 text-neutral-900 font-bold uppercase tracking-wider rounded-xl transition-all flex items-center gap-2 text-sm shadow-[0_0_10px_rgba(163,230,53,0.3)]"><Camera size={16} /> Comprobante</button>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              ) : <p className="text-neutral-500 text-center py-10 font-bold tracking-widest uppercase">No hay fichas pendientes</p>}
             </div>
           </section>
 
@@ -606,10 +658,10 @@ function Dashboard({ user }) {
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <span className="text-2xl font-black text-white">{ficha.serie ? `${ficha.serie}-` : '#'}{ficha.numero}</span>
-                    {ficha.estado === 'Pendiente' ? <span className="bg-orange-400/10 text-orange-400 text-[10px] px-2 py-0.5 rounded-full uppercase font-bold border border-orange-400/20">Pendiente</span> : 
-                     ficha.estado === 'Anulada' ? <span className="bg-red-400/10 text-red-400 text-[10px] px-2 py-0.5 rounded-full uppercase font-bold border border-red-400/20">Anulada</span> :
-                     <span className="bg-lime-400/10 text-lime-400 text-[10px] px-2 py-0.5 rounded-full uppercase font-bold border border-lime-400/20">Pagado</span>}
-                     {ficha.enEspera && <span className="bg-orange-500/20 text-orange-400 text-[10px] px-2 py-0.5 rounded-full uppercase font-bold border border-orange-500/30">Espera</span>}
+                    {ficha.estado === 'Pendiente' ? <span className="bg-orange-400/10 text-orange-400 text-[10px] px-2 py-0.5 rounded-full uppercase font-bold border border-orange-400/20">Pendiente</span> :
+                      ficha.estado === 'Anulada' ? <span className="bg-red-400/10 text-red-400 text-[10px] px-2 py-0.5 rounded-full uppercase font-bold border border-red-400/20">Anulada</span> :
+                        <span className="bg-lime-400/10 text-lime-400 text-[10px] px-2 py-0.5 rounded-full uppercase font-bold border border-lime-400/20">Pagado</span>}
+                    {ficha.enEspera && <span className="bg-orange-500/20 text-orange-400 text-[10px] px-2 py-0.5 rounded-full uppercase font-bold border border-orange-500/30">Espera</span>}
                   </div>
                   <p className="text-neutral-500 text-xs mt-1">{new Date(ficha.createdAt).toLocaleTimeString()} · {ficha.monto > 0 ? <span className={ficha.monto === 30 ? 'text-pink-400' : 'text-cyan-400'}>{ficha.monto} Bs</span> : 'Sin Monto'} · <span className="uppercase text-[10px]">{ficha.metodo}</span></p>
                 </div>
@@ -636,27 +688,27 @@ function Dashboard({ user }) {
           <div className="w-full max-w-sm bg-neutral-900 border border-neutral-700 rounded-3xl p-6 relative">
             <button onClick={() => setShowConfigTalonario(false)} className="absolute top-4 right-4 text-neutral-500 hover:text-white"><X size={20} /></button>
             <h3 className="text-xl font-bold text-white mb-6 uppercase tracking-wider text-center">Nuevo Talonario</h3>
-            
+
             <div className="space-y-4 mb-6">
               <div>
                 <label className="text-xs font-bold text-neutral-400 uppercase tracking-wider block mb-2">Código / Serie (Opcional)</label>
-                <input type="text" value={formTalonario.serie} onChange={e => setFormTalonario({...formTalonario, serie: e.target.value.toUpperCase()})} placeholder="Ej: A" className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-cyan-400 transition-colors uppercase" />
+                <input type="text" value={formTalonario.serie} onChange={e => setFormTalonario({ ...formTalonario, serie: e.target.value.toUpperCase() })} placeholder="Ej: A" className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-cyan-400 transition-colors uppercase" />
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-bold text-neutral-400 uppercase tracking-wider block mb-2">Comienza en (*)</label>
-                  <input type="number" value={formTalonario.inicial} onChange={e => setFormTalonario({...formTalonario, inicial: e.target.value})} min="1" className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-cyan-400 transition-colors" required />
+                  <input type="number" value={formTalonario.inicial} onChange={e => setFormTalonario({ ...formTalonario, inicial: e.target.value })} min="1" className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-cyan-400 transition-colors" required />
                 </div>
                 <div>
                   <label className="text-xs font-bold text-neutral-400 uppercase tracking-wider block mb-2">Cantidad Fichas</label>
-                  <input type="number" value={formTalonario.capacidad} onChange={e => setFormTalonario({...formTalonario, capacidad: e.target.value})} min="1" className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-cyan-400 transition-colors" required />
+                  <input type="number" value={formTalonario.capacidad} onChange={e => setFormTalonario({ ...formTalonario, capacidad: e.target.value })} min="1" className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-cyan-400 transition-colors" required />
                 </div>
               </div>
-              
+
               <div className="bg-neutral-800 p-3 rounded-lg text-center mt-2">
-                 <p className="text-xs text-neutral-400">Rango generado:</p>
-                 <p className="text-lime-400 font-black">{formTalonario.serie ? `${formTalonario.serie}-` : ''}{formTalonario.inicial || 1} al {formTalonario.serie ? `${formTalonario.serie}-` : ''}{(parseInt(formTalonario.inicial) || 1) + (parseInt(formTalonario.capacidad) || 100) - 1}</p>
+                <p className="text-xs text-neutral-400">Rango generado:</p>
+                <p className="text-lime-400 font-black">{formTalonario.serie ? `${formTalonario.serie}-` : ''}{formTalonario.inicial || 1} al {formTalonario.serie ? `${formTalonario.serie}-` : ''}{(parseInt(formTalonario.inicial) || 1) + (parseInt(formTalonario.capacidad) || 100) - 1}</p>
               </div>
             </div>
 
@@ -718,6 +770,25 @@ function Dashboard({ user }) {
         <div className="fixed inset-0 bg-black/80 z-[100] flex flex-col items-center justify-center">
           <div className="w-16 h-16 border-4 border-transparent border-t-yellow-400 border-r-pink-500 rounded-full animate-spin mb-4"></div>
           <p className="text-white font-bold uppercase tracking-widest animate-pulse">Procesando...</p>
+        </div>
+      )}
+
+      {/* BARRA FLOTANTE MULTI-SELECCIÓN */}
+      {selectedPendientes.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[80] w-[90%] max-w-lg bg-neutral-900/90 backdrop-blur-xl border border-cyan-500/50 rounded-2xl p-4 shadow-[0_10px_40px_rgba(0,0,0,0.8)] flex items-center justify-between gap-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div>
+            <p className="text-white font-black text-lg">{selectedPendientes.size} <span className="text-neutral-400 text-sm font-bold uppercase tracking-tighter">Fichas seleccionadas</span></p>
+            <p className="text-cyan-400 text-xs font-bold uppercase tracking-widest">Listas para comprobante único</p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => setSelectedPendientes(new Set())} className="p-3 text-neutral-400 hover:text-white transition-colors" title="Cancelar selección">
+              <X size={24} />
+            </button>
+            <button onClick={handleBulkReceipt} className="bg-cyan-500 hover:bg-cyan-400 text-neutral-900 font-black uppercase tracking-wider px-6 py-3 rounded-xl transition-all flex items-center gap-2 shadow-[0_0_20px_rgba(34,211,238,0.4)]">
+              <Camera size={20} />
+              <span>Foto Grupal</span>
+            </button>
+          </div>
         </div>
       )}
     </div>
