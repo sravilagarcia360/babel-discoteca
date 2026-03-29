@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Zap, Camera, Upload, Trash2, Download, LogOut, Image as ImageIcon, Clock, Plus, X, Eye, Check } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInWithEmailAndPassword, signInAnonymously, onAuthStateChanged, signOut } from 'firebase/auth';
-import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, setDoc } from 'firebase/firestore';
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signInAnonymously, onAuthStateChanged, signOut } from 'firebase/auth';
+import { initializeFirestore, persistentLocalCache, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, setDoc, query, orderBy } from 'firebase/firestore';
 
 // --- CONFIGURACIÓN DE FIREBASE SEGURA ---
 
@@ -16,7 +16,9 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app);
+const db = initializeFirestore(app, {
+  localCache: persistentLocalCache()
+});
 
 // --- COMPONENTE: NEON BUTTON ---
 function NeonButton({ children, color = 'pink', onClick, className = '', disabled = false, icon: Icon }) {
@@ -46,14 +48,26 @@ function LoginScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
 
-  const handleEmailLogin = async (e) => {
+  const handleEmailAuth = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setError('');
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      if (isRegistering) {
+        await createUserWithEmailAndPassword(auth, email, password);
+      } else {
+        await signInWithEmailAndPassword(auth, email, password);
+      }
     } catch (err) {
-      setError('Credenciales inválidas. Verifica tu correo y contraseña.');
+      if (err.code === 'auth/email-already-in-use') {
+        setError('El correo ya está registrado.');
+      } else if (err.code === 'auth/weak-password') {
+        setError('La contraseña debe tener al menos 6 caracteres.');
+      } else {
+        setError(isRegistering ? 'Error al crear cuenta. Revisa tus datos.' : 'Credenciales inválidas. Verifica tu correo y contraseña.');
+      }
     }
     setLoading(false);
   };
@@ -81,18 +95,30 @@ function LoginScreen() {
           <p className="text-pink-400 tracking-[0.3em] font-bold text-sm uppercase">Discoteca</p>
         </div>
 
-        <form onSubmit={handleEmailLogin} className="space-y-6">
+        <form onSubmit={handleEmailAuth} className="space-y-6">
           <input type="email" placeholder="Correo electrónico" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-4 text-white placeholder-neutral-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all text-lg" required />
-          <input type="password" placeholder="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-4 text-white placeholder-neutral-500 focus:outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500 transition-all text-lg" required />
-          {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+          <input type="password" placeholder="Contraseña (mín 6 req)" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-4 text-white placeholder-neutral-500 focus:outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500 transition-all text-lg" required minLength="6" />
+          {error && <p className="text-red-400 text-sm text-center font-semibold">{error}</p>}
+          
+          <div className="flex gap-4">
+            <button type="button" onClick={() => setIsRegistering(!isRegistering)} className="text-sm text-neutral-400 hover:text-white transition-colors underline-offset-4 underline">
+              {isRegistering ? 'Ya tengo cuenta' : 'Crear cuenta nueva'}
+            </button>
+          </div>
+
           <NeonButton type="submit" color="rainbow" className="w-full py-4 text-lg border-0" disabled={loading}>
-            {loading ? 'Entrando...' : 'Ingresar'}
+            {loading ? 'Procesando...' : (isRegistering ? 'Registrarse' : 'Ingresar')}
           </NeonButton>
         </form>
 
         <div className="mt-8 pt-6 border-t border-neutral-800">
-          <button onClick={handleDemoLogin} type="button" className="w-full text-purple-400 hover:text-purple-300 transition-colors text-sm uppercase tracking-wider font-semibold">
-            Ingresar Modo Demo / Prueba
+          <div className="bg-cyan-900/20 border border-cyan-500/30 p-3 rounded-xl mb-4 text-center">
+            <p className="text-[11px] text-cyan-200 font-medium uppercase tracking-wider leading-relaxed">
+              Para <strong className="text-cyan-400 font-black">vincular PC y Celular en tiempo real</strong>, asegúrate de iniciar sesión con el mismo correo y contraseña.
+            </p>
+          </div>
+          <button onClick={handleDemoLogin} type="button" className="w-full text-purple-400 hover:text-purple-300 transition-colors text-sm uppercase tracking-wider font-semibold bg-purple-500/10 py-3 rounded-xl border border-purple-500/20">
+            Ingresar Modo Local (Sin Sincronización)
           </button>
         </div>
       </div>
@@ -137,9 +163,9 @@ function Dashboard({ user }) {
 
   useEffect(() => {
     if (!user) return;
-    const unsubFichas = onSnapshot(fichasRef, (snapshot) => {
+    const q = query(fichasRef, orderBy('createdAt', 'desc'));
+    const unsubFichas = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      data.sort((a, b) => b.createdAt - a.createdAt);
       setFichas(data);
     }, (error) => console.error("Error fetching fichas:", error));
 
@@ -462,20 +488,22 @@ function Dashboard({ user }) {
     <div className="min-h-screen bg-neutral-950 text-white font-sans pb-24 overflow-x-hidden selection:bg-pink-500/30">
       <style dangerouslySetInnerHTML={{ __html: `@keyframes rainbowMove { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } } .animate-rainbow { background-size: 200% 200%; animation: rainbowMove 4s ease infinite; }` }} />
 
-      <header className="sticky top-0 z-50 bg-neutral-950/80 backdrop-blur-md border-b border-neutral-800 p-4 flex flex-col sm:flex-row justify-between items-center sm:h-20 gap-4 shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
-        <h1 className="text-2xl font-black uppercase tracking-widest bg-clip-text text-transparent bg-gradient-to-r from-red-500 via-yellow-400 via-lime-400 via-cyan-400 to-purple-500 animate-rainbow">BABEL</h1>
+      <header className="sticky top-0 z-50 bg-neutral-950/80 backdrop-blur-md border-b border-neutral-800 p-4 flex flex-row flex-wrap sm:flex-nowrap justify-between items-center gap-4 shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
+        <h1 className="text-xl sm:text-2xl font-black uppercase tracking-widest bg-clip-text text-transparent bg-gradient-to-r from-red-500 via-yellow-400 via-lime-400 via-cyan-400 to-purple-500 animate-rainbow shrink-0">BABEL</h1>
 
         {/* TAB SELECTOR */}
-        <div className="flex bg-neutral-900 border border-neutral-800 rounded-xl p-1">
-          <button onClick={() => setActiveTab('efectivo')} className={`px-6 py-2 rounded-lg font-bold uppercase tracking-wider text-sm transition-all ${activeTab === 'efectivo' ? 'bg-pink-500 text-white shadow-[0_0_15px_rgba(236,72,153,0.4)]' : 'text-neutral-500 hover:text-white'}`}>
+        <div className="flex bg-neutral-900 border border-neutral-800 rounded-xl p-1 w-full sm:w-auto order-last sm:order-none justify-center">
+          <button onClick={() => setActiveTab('efectivo')} className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 rounded-lg font-bold uppercase tracking-wider text-xs sm:text-sm transition-all ${activeTab === 'efectivo' ? 'bg-pink-500 text-white shadow-[0_0_15px_rgba(236,72,153,0.4)]' : 'text-neutral-500 hover:text-white'}`}>
             Caja Efectivo
           </button>
-          <button onClick={() => setActiveTab('qr')} className={`px-6 py-2 rounded-lg font-bold uppercase tracking-wider text-sm transition-all ${activeTab === 'qr' ? 'bg-cyan-500 text-neutral-900 shadow-[0_0_15px_rgba(34,211,238,0.4)]' : 'text-neutral-500 hover:text-white'}`}>
+          <button onClick={() => setActiveTab('qr')} className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 rounded-lg font-bold uppercase tracking-wider text-xs sm:text-sm transition-all ${activeTab === 'qr' ? 'bg-cyan-500 text-neutral-900 shadow-[0_0_15px_rgba(34,211,238,0.4)]' : 'text-neutral-500 hover:text-white'}`}>
             Caja QR
           </button>
         </div>
 
-        <button onClick={() => signOut(auth)} className="text-neutral-400 hover:text-red-400 transition-colors hidden sm:block"><LogOut size={24} /></button>
+        <button onClick={() => signOut(auth)} className="text-neutral-400 hover:text-red-400 transition-colors p-2 bg-neutral-900 rounded-full border border-neutral-800 hover:border-red-500/50 shadow-sm shrink-0" title="Cerrar Sesión">
+          <LogOut size={20} />
+        </button>
       </header>
 
       <main className="max-w-7xl mx-auto p-4 lg:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8 mt-4">
@@ -496,8 +524,8 @@ function Dashboard({ user }) {
 
               <div className="text-center mb-6">
                 <p className="text-neutral-500 font-bold uppercase text-xs tracking-widest mb-2">Ficha Actual a Emitir</p>
-                <span className="text-6xl font-black text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">
-                  {settings.talonarioSerie && <span className="text-3xl text-neutral-500 mr-2">{settings.talonarioSerie}-</span>}
+                <span className="text-5xl md:text-6xl font-black text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">
+                  {settings.talonarioSerie && <span className="text-2xl md:text-3xl text-neutral-500 mr-2">{settings.talonarioSerie}-</span>}
                   {settings.numeroTalonarioActual > (settings.limiteTalonario || 100) ? 'Agotado' : settings.numeroTalonarioActual + carrito.length}
                 </span>
               </div>
@@ -578,13 +606,13 @@ function Dashboard({ user }) {
                           <p className={`text-xl font-black mt-1 ${ficha.monto === 30 ? 'text-pink-400' : 'text-cyan-400'}`}>{ficha.monto} Bs</p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center gap-1 md:gap-2" onClick={(e) => e.stopPropagation()}>
                         {ficha.enEspera ? (
-                          <button onClick={() => quitarDeEspera(ficha.id)} className="p-3 bg-red-500/10 text-red-400 rounded-xl hover:bg-red-500 hover:text-white border border-red-500/20" title="Quitar de Espera"><X size={20} /></button>
+                          <button onClick={() => quitarDeEspera(ficha.id)} className="p-2 md:p-3 bg-red-500/10 text-red-400 rounded-xl hover:bg-red-500 hover:text-white border border-red-500/20" title="Quitar de Espera"><X size={20} /></button>
                         ) : (
-                          <button onClick={() => ponerEnEspera(ficha.id)} className="p-3 bg-orange-500/10 text-orange-400 rounded-xl hover:bg-orange-500 hover:text-white border border-orange-500/20" title="Poner en Espera"><Clock size={20} /></button>
+                          <button onClick={() => ponerEnEspera(ficha.id)} className="p-2 md:p-3 bg-orange-500/10 text-orange-400 rounded-xl hover:bg-orange-500 hover:text-white border border-orange-500/20" title="Poner en Espera"><Clock size={20} /></button>
                         )}
-                        <button onClick={() => { setActiveFichaIdForReceipt(ficha.id); cameraInputRef.current?.click(); }} className="px-4 py-3 bg-lime-500 hover:bg-lime-400 text-neutral-900 font-bold uppercase tracking-wider rounded-xl transition-all flex items-center gap-2 text-sm shadow-[0_0_10px_rgba(163,230,53,0.3)]"><Camera size={16} /> Comprobante</button>
+                        <button onClick={() => { setActiveFichaIdForReceipt(ficha.id); cameraInputRef.current?.click(); }} className="px-3 md:px-4 py-2 md:py-3 bg-lime-500 hover:bg-lime-400 text-neutral-900 font-bold uppercase tracking-wider rounded-xl transition-all flex items-center gap-1 md:gap-2 text-[10px] md:text-sm shadow-[0_0_10px_rgba(163,230,53,0.3)] whitespace-nowrap"><Camera size={16} /> Foto</button>
                       </div>
                     </div>
                   ))}
