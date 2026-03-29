@@ -374,8 +374,10 @@ function Dashboard({ user }) {
       try {
         const link = document.createElement("a");
         link.href = receiptPreview.base64;
-        const dateStr = new Date().toISOString().split('T')[0];
-        link.download = `${dateStr}-Babel.jpg`;
+        const now = new Date();
+        const dateStr = now.toISOString().split('T')[0];
+        const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
+        link.download = `${dateStr}_${timeStr}-Babel.jpg`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
