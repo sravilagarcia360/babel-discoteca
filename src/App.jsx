@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Zap, Camera, Upload, Trash2, Download, LogOut, Image as ImageIcon, Clock, Plus, X, Eye, Check } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signInAnonymously, onAuthStateChanged, signOut } from 'firebase/auth';
+import { getAuth, signInWithEmailAndPassword, signInAnonymously, onAuthStateChanged, signOut } from 'firebase/auth';
 import { initializeFirestore, persistentLocalCache, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, setDoc, query, orderBy } from 'firebase/firestore';
 
 // --- CONFIGURACIÓN DE FIREBASE SEGURA ---
@@ -48,26 +48,15 @@ function LoginScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [isRegistering, setIsRegistering] = useState(false);
 
   const handleEmailAuth = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
     try {
-      if (isRegistering) {
-        await createUserWithEmailAndPassword(auth, email, password);
-      } else {
-        await signInWithEmailAndPassword(auth, email, password);
-      }
+      await signInWithEmailAndPassword(auth, email, password);
     } catch (err) {
-      if (err.code === 'auth/email-already-in-use') {
-        setError('El correo ya está registrado.');
-      } else if (err.code === 'auth/weak-password') {
-        setError('La contraseña debe tener al menos 6 caracteres.');
-      } else {
-        setError(isRegistering ? 'Error al crear cuenta. Revisa tus datos.' : 'Credenciales inválidas. Verifica tu correo y contraseña.');
-      }
+      setError('Credenciales inválidas. Verifica tu correo y contraseña.');
     }
     setLoading(false);
   };
@@ -97,17 +86,11 @@ function LoginScreen() {
 
         <form onSubmit={handleEmailAuth} className="space-y-6">
           <input type="email" placeholder="Correo electrónico" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-4 text-white placeholder-neutral-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all text-lg" required />
-          <input type="password" placeholder="Contraseña (mín 6 req)" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-4 text-white placeholder-neutral-500 focus:outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500 transition-all text-lg" required minLength="6" />
+          <input type="password" placeholder="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-4 text-white placeholder-neutral-500 focus:outline-none focus:border-pink-500 focus:ring-1 focus:ring-pink-500 transition-all text-lg" required />
           {error && <p className="text-red-400 text-sm text-center font-semibold">{error}</p>}
           
-          <div className="flex gap-4">
-            <button type="button" onClick={() => setIsRegistering(!isRegistering)} className="text-sm text-neutral-400 hover:text-white transition-colors underline-offset-4 underline">
-              {isRegistering ? 'Ya tengo cuenta' : 'Crear cuenta nueva'}
-            </button>
-          </div>
-
           <NeonButton type="submit" color="rainbow" className="w-full py-4 text-lg border-0" disabled={loading}>
-            {loading ? 'Procesando...' : (isRegistering ? 'Registrarse' : 'Ingresar')}
+            {loading ? 'Procesando...' : 'Ingresar'}
           </NeonButton>
         </form>
 
