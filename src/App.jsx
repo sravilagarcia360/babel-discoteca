@@ -322,9 +322,14 @@ function Dashboard({ user }) {
   const confirmarEliminarFicha = async () => {
     if (!fichaToDelete) return;
     try {
-      await deleteDoc(doc(db, `${basePath}/fichas`, fichaToDelete));
+      const batch = writeBatch(db);
+      const fichaRef = doc(db, `${basePath}/fichas`, fichaToDelete);
+      batch.delete(fichaRef);
+
       const nuevoNumero = Math.max(1, settings.numeroTalonarioActual - 1);
-      await setDoc(settingsDocRef, { numeroTalonarioActual: nuevoNumero }, { merge: true });
+      batch.set(settingsDocRef, { numeroTalonarioActual: nuevoNumero }, { merge: true });
+
+      await batch.commit();
       showToast("Éxito", "Ficha eliminada y número retornado.", "success");
     } catch (error) {
       showToast("Error", "No se pudo eliminar.", "error");
@@ -334,9 +339,11 @@ function Dashboard({ user }) {
   const confirmarDevolverFicha = async () => {
     if (!fichaToReturn) return;
     try {
-      await updateDoc(doc(db, `${basePath}/fichas`, fichaToReturn), { estado: 'Devuelta' });
+      const batch = writeBatch(db);
+      batch.update(doc(db, `${basePath}/fichas`, fichaToReturn), { estado: 'Devuelta' });
       const nuevoNumero = Math.max(1, settings.numeroTalonarioActual - 1);
-      await setDoc(settingsDocRef, { numeroTalonarioActual: nuevoNumero }, { merge: true });
+      batch.set(settingsDocRef, { numeroTalonarioActual: nuevoNumero }, { merge: true });
+      await batch.commit();
       showToast("Éxito", "Ficha devuelta y número retornado.", "success");
     } catch (error) {
       showToast("Error", "No se pudo devolver.", "error");
