@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Zap, Camera, Upload, Trash2, Download, LogOut, Image as ImageIcon, Clock, Plus, X, Eye, Check } from 'lucide-react';
+import { Zap, Camera, Upload, Trash2, Download, LogOut, Image as ImageIcon, Clock, Plus, X, Eye, Check, EyeOff } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithEmailAndPassword, signInAnonymously, onAuthStateChanged, signOut } from 'firebase/auth';
 import { initializeFirestore, persistentLocalCache, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, setDoc, query, orderBy, getDocs, writeBatch } from 'firebase/firestore';
@@ -121,6 +121,7 @@ function Dashboard({ user }) {
   const [fichaToReturn, setFichaToReturn] = useState(null);
   const [modalMessage, setModalMessage] = useState({ show: false, title: '', message: '', type: 'info' });
   const [toastMessage, setToastMessage] = useState({ show: false, title: '', message: '', type: 'success' });
+  const [isCensored, setIsCensored] = useState(false);
 
   // Estado del Carrito / Acumulador
   const [carrito, setCarrito] = useState([]); // [{ numero: 1, monto: 30 }, ...]
@@ -668,9 +669,15 @@ function Dashboard({ user }) {
             <div className="col-span-2 relative p-[2px] rounded-3xl overflow-hidden shadow-xl shadow-black/20 group">
               <div className="absolute inset-0 bg-gradient-to-r from-red-600 via-orange-500 via-yellow-500 via-lime-500 via-cyan-500 to-purple-600 animate-rainbow"></div>
               <div className="relative bg-slate-950 rounded-[22px] p-6 text-center h-full">
-                <p className="text-slate-300 font-bold text-xs uppercase tracking-widest mb-1">Recaudado Confirmado ({activeTab})</p>
+                <div className="flex justify-center items-center gap-2 mb-1">
+                  <p className="text-slate-300 font-bold text-xs uppercase tracking-widest">Recaudado Confirmado ({activeTab})</p>
+                  <button onClick={() => setIsCensored(!isCensored)} className="text-slate-500 hover:text-white transition-colors">
+                    {isCensored ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
                 <div className="text-5xl font-black text-white flex justify-center items-center gap-2">
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-lime-400 to-cyan-400 text-3xl">Bs.</span>{stats.montoTotal}
+                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-lime-400 to-cyan-400 text-3xl">Bs.</span>
+                  {isCensored ? '****' : stats.montoTotal}
                 </div>
               </div>
             </div>
