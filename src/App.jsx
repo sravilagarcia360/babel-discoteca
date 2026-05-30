@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Zap, Camera, Upload, Trash2, Download, LogOut, Image as ImageIcon, Clock, Plus, X, Eye, Check } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithEmailAndPassword, signInAnonymously, onAuthStateChanged, signOut } from 'firebase/auth';
-import { initializeFirestore, persistentLocalCache, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, setDoc, query, orderBy } from 'firebase/firestore';
+import { initializeFirestore, persistentLocalCache, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, setDoc, query, orderBy, getDocs } from 'firebase/firestore';
 
 // --- CONFIGURACIÓN DE FIREBASE SEGURA ---
 
@@ -346,9 +346,19 @@ function Dashboard({ user }) {
 
     setIsUploading(true);
     try {
-      // Iterar sobre las fichas actuales para eliminarlas
-      const deletePromises = fichas.map(f => deleteDoc(doc(db, `${basePath}/fichas`, f.id)));
+      const querySnapshot = await getDocs(fichasRef);
+      if (querySnapshot.empty) {
+        showMessage("Información", "El historial ya está vacío.", "info");
+        setIsUploading(false);
+        return;
+      }
+
+      // Crear un array de promesas de borrado para cada documento.
+      const deletePromises = querySnapshot.docs.map(document => deleteDoc(document.ref));
+
+      // Esperar a que todas las promesas de borrado se completen.
       await Promise.all(deletePromises);
+
       showMessage("Éxito", "Todo el historial ha sido borrado.", "success");
     } catch (error) {
       console.error("Error al limpiar historial:", error);
@@ -389,8 +399,8 @@ function Dashboard({ user }) {
         updateDoc(doc(db, `${basePath}/fichas`, id), { comprobanteUrl: receiptPreview.base64, estado: 'Pagado' })
       );
       await Promise.all(updatePromises);
-      showMessage("Éxito", "Comprobante guardado en base de datos. Imagen descargada.", "success");
 
+      showToast("Éxito", "Imagen descargada y monto sumado.", "success");
       // Intentar forzar descarga
       try {
         const link = document.createElement("a");
@@ -407,7 +417,7 @@ function Dashboard({ user }) {
       }
 
     } catch (error) {
-      showMessage("Error", "Error al guardar el comprobante.", "error");
+      showToast("Error", "Error al guardar el comprobante.", "error");
     } finally {
       setIsUploading(false);
       setReceiptPreview({ file: null, base64: null, targetIds: [] });
@@ -470,9 +480,15 @@ function Dashboard({ user }) {
     return { total30, total40, montoTotal: (total30 * 30) + (total40 * 40), totalPendientes };
   }, [fichas, activeTab]);
 
-  // Lista dividida
-  const fichasHistorial = fichas.filter(f => f.metodo === (activeTab === 'efectivo' ? 'Efectivo' : 'QR'));
-  const pendientesQR = fichas.filter(f => f.metodo === 'QR' && f.estado === 'Pendiente');
+  // Listas divididas y memoizadas para optimizar rendimiento
+  const fichasHistorial = useMemo(() =>
+    fichas.filter(f => f.metodo === (activeTab === 'efectivo' ? 'Efectivo' : 'QR')),
+    [fichas, activeTab]
+  );
+  const pendientesQR = useMemo(() =>
+    fichas.filter(f => f.metodo === 'QR' && f.estado === 'Pendiente'),
+    [fichas]
+  );
 
   const exportarExcel = () => {
     if (!window.XLSX) { showMessage("Aviso", "Cargando librería, intenta de nuevo.", "info"); return; }
@@ -687,7 +703,7 @@ function Dashboard({ user }) {
             </div>
           </div>
           <div className="space-y-3 overflow-y-auto pr-2 flex-1 custom-scrollbar">
-            {fichasHistorial.slice(0, 50).map((ficha) => (
+            {fichasHistorial.map((ficha) => (
               <div key={ficha.id} className={`bg-neutral-950 border ${ficha.enEspera ? 'border-orange-500/30' : 'border-neutral-800'} p-4 rounded-2xl flex items-center justify-between gap-3 shadow-[0_4px_15px_rgba(0,0,0,0.5)] hover:border-neutral-700 transition-colors`}>
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
