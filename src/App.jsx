@@ -677,7 +677,7 @@ function Dashboard({ user }) {
                 </div>
                 <div className="text-5xl font-black text-white flex justify-center items-center gap-2">
                   <span className="text-transparent bg-clip-text bg-gradient-to-r from-lime-400 to-cyan-400 text-3xl">Bs.</span>
-                  {isCensored ? '****' : stats.montoTotal}
+                  {isCensored ? '●●●●' : stats.montoTotal}
                 </div>
               </div>
             </div>
