@@ -107,6 +107,18 @@ export default function RendicionDeCuentas() {
 
   const [editItem, setEditItem] = useState(null); // { cat, subcat, index }
 
+  const [inputs, setInputs] = useState({
+    entradas: {
+      ef: { cant: '', precio: '' },
+      eq: { cant: '', precio: '' },
+      talonario: { num: '', color: '', foto: null }
+    },
+    guardarropia: {
+      gf: { cant: '', precio: '' },
+      gq: { cant: '', precio: '' },
+      talonario: { num: '', color: '', foto: null }
+    }
+  });
   const handleAddLinea = (cat, subcat) => {
     const key = cat === 'entradas' ? (subcat === 'fisico' ? 'ef' : 'eq') : (subcat === 'fisico' ? 'gf' : 'gq');
     const cant = parseFloat(inputs[cat][key].cant);
