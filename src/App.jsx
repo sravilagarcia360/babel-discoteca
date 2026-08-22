@@ -4,6 +4,7 @@ import { auth } from './config/firebase';
 import LoginScreen from './screens/LoginScreen';
 import Dashboard from './screens/Dashboard';
 import RendicionDeCuentas from './screens/RendicionDeCuentas';
+import { LayoutGrid, ClipboardList } from 'lucide-react';
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -20,8 +21,8 @@ export default function App() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center transition-colors">
-        <div className="w-12 h-12 border-4 border-t-cyan-500 border-slate-300 dark:border-slate-800 rounded-full animate-spin"></div>
+      <div className="min-h-screen flex items-center justify-center transition-colors">
+        <div className="w-12 h-12 border-4 border-t-cyan-500 border-slate-800 rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -30,28 +31,38 @@ export default function App() {
     return <LoginScreen />;
   }
 
-  // Navbar Layout for authenticated user
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors">
-      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-t border-slate-300 dark:border-slate-800 p-3 flex justify-around shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] dark:shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.3)]">
-        <button 
-          onClick={() => setCurrentRoute('dashboard')}
-          className={`flex flex-col items-center px-6 py-2 rounded-xl transition-colors font-bold text-xs uppercase tracking-widest ${currentRoute === 'dashboard' ? 'text-cyan-600 dark:text-cyan-400 bg-cyan-100 dark:bg-cyan-900/30' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white'}`}
-        >
-          Cajas
-        </button>
-        <button 
-          onClick={() => setCurrentRoute('rendicion')}
-          className={`flex flex-col items-center px-6 py-2 rounded-xl transition-colors font-bold text-xs uppercase tracking-widest ${currentRoute === 'rendicion' ? 'text-cyan-600 dark:text-cyan-400 bg-cyan-100 dark:bg-cyan-900/30' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white'}`}
-        >
-          Rendición
-        </button>
-      </nav>
-      
-      <div className="pb-20">
+    <div className="min-h-screen transition-colors">
+      <div className="pb-28">
         {currentRoute === 'dashboard' && <Dashboard user={user} />}
         {currentRoute === 'rendicion' && <RendicionDeCuentas user={user} />}
       </div>
+      
+      {/* TAB BAR APPLE-STYLE */}
+      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] glass rounded-[28px] p-2 flex gap-2 shadow-2xl border border-white/10 w-[90%] max-w-sm">
+        <button 
+          onClick={() => setCurrentRoute('dashboard')}
+          className={`flex-1 flex flex-col items-center justify-center py-2.5 px-4 rounded-[20px] transition-all duration-300 ${
+            currentRoute === 'dashboard' 
+              ? 'bg-white/10 text-cyan-400 shadow-[0_2px_10px_rgba(6,182,212,0.2)]' 
+              : 'text-slate-400 hover:text-white hover:bg-white/5'
+          }`}
+        >
+          <LayoutGrid size={22} className="mb-1" />
+          <span className="text-[10px] font-bold uppercase tracking-wider">Cajas</span>
+        </button>
+        <button 
+          onClick={() => setCurrentRoute('rendicion')}
+          className={`flex-1 flex flex-col items-center justify-center py-2.5 px-4 rounded-[20px] transition-all duration-300 ${
+            currentRoute === 'rendicion' 
+              ? 'bg-white/10 text-cyan-400 shadow-[0_2px_10px_rgba(6,182,212,0.2)]' 
+              : 'text-slate-400 hover:text-white hover:bg-white/5'
+          }`}
+        >
+          <ClipboardList size={22} className="mb-1" />
+          <span className="text-[10px] font-bold uppercase tracking-wider">Rendición</span>
+        </button>
+      </nav>
     </div>
   );
 }

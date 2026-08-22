@@ -32,10 +32,11 @@ export default function RendicionDeCuentas() {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        // Aseguramos que el campo notas exista aunque el draft sea viejo
-        parsed.entradas.notas   = parsed.entradas.notas   || '';
-        parsed.guardarropia.notas = parsed.guardarropia.notas || '';
-        return parsed;
+        if (parsed && parsed.entradas && parsed.guardarropia) {
+          parsed.entradas.notas = parsed.entradas.notas || '';
+          parsed.guardarropia.notas = parsed.guardarropia.notas || '';
+          return parsed;
+        }
       }
     } catch (e) {}
     return estadoInicial;
