@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Zap, Camera, Upload, Trash2, Download, LogOut, Image as ImageIcon, Clock, Plus, X, Eye, Check, EyeOff, Moon, Sun, Settings, Bell, BellOff, ArrowRight } from 'lucide-react';
+import { Zap, Camera, Upload, Trash2, Download, LogOut, Image as ImageIcon, Clock, Plus, X, Eye, Check, EyeOff, Moon, Sun, Settings, Bell, BellOff, ArrowRight, History, Archive } from 'lucide-react';
 import { collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, setDoc, query, orderBy, getDocs, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../config/firebase';
 import { signOut } from 'firebase/auth';
 import NeonButton from '../components/ui/NeonButton';
 import StatsGrid from '../components/ui/StatsGrid';
 import { useTheme } from '../context/ThemeContext';
-
+import FichaQRMZ from '../components/ficha/FichaQRMZ';
+import FichaHistorialMZ from '../components/ficha/FichaHistorialMZ';
 // --- COMPONENTE: DASHBOARD PRINCIPAL ---
 export default function Dashboard({ user }) {
   const [activeTab, setActiveTab] = useState('efectivo'); // 'efectivo' o 'qr'
@@ -32,6 +33,12 @@ export default function Dashboard({ user }) {
   // Configuración de la App (Ajustes Estáticos)
   const [showAppSettings, setShowAppSettings] = useState(false);
   const [formAppSettings, setFormAppSettings] = useState({ precios: '30, 40' });
+
+  // Historial de exportaciones y Cierre de Noche
+  const [showExportHistory, setShowExportHistory] = useState(false);
+  const [exportHistory, setExportHistory] = useState([]);
+  const [showCierreNoche, setShowCierreNoche] = useState(false);
+  const [isCerrando, setIsCerrando] = useState(false);
 
   const cameraInputRef = useRef(null);
   const qrUploadRef = useRef(null);
@@ -128,6 +135,17 @@ export default function Dashboard({ user }) {
     return () => { unsubFichas(); unsubSettings(); };
   }, [user, basePath]);
 
+  // Cargar historial de exportaciones desde Firestore
+  useEffect(() => {
+    if (!user) return;
+    const exportsRef = collection(db, `${basePath}/exportaciones`);
+    const q = query(exportsRef, orderBy('fecha', 'desc'));
+    const unsub = onSnapshot(q, (snap) => {
+      setExportHistory(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsub();
+  }, [user, basePath]);
+
   const showMessage = (title, message, type = 'info') => setModalMessage({ show: true, title, message, type });
 
   const showToast = (title, message, type = 'success') => {
@@ -144,7 +162,7 @@ export default function Dashboard({ user }) {
         img.src = event.target.result;
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          const MAX_WIDTH = 400; // REDUCIDO PARA MAYOR VELOCIDAD
+          const MAX_WIDTH = 800; // Mayor resolución para comprobantes legibles
           let scaleSize = 1;
           if (img.width > MAX_WIDTH) scaleSize = MAX_WIDTH / img.width;
 
@@ -153,7 +171,11 @@ export default function Dashboard({ user }) {
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-          const base64Data = canvas.toDataURL('image/jpeg', 0.6);
+          // Usar WebP si el browser lo soporta (30% más eficiente que JPEG)
+          const webpTest = canvas.toDataURL('image/webp', 0.75);
+          const base64Data = webpTest.startsWith('data:image/webp')
+            ? webpTest
+            : canvas.toDataURL('image/jpeg', 0.75);
           resolve(base64Data);
         };
         img.onerror = (error) => reject(error);
@@ -252,16 +274,12 @@ export default function Dashboard({ user }) {
 
   const procesarCarrito = async (metodo) => { // metodo: 'Efectivo' o 'QR'
     if (carrito.length === 0) return;
-    
-    // Optimizacion: Si es Efectivo o QR, el batch en firestore es tan rapido que
-    // no bloquearemos la pantalla entera para que se sienta verdaderamente EN VIVO.
-    // Solo bloquearemos para Subida de imagenes (Comprobantes).
     try {
       const estado = metodo === 'Efectivo' ? 'Pagado' : 'Pendiente';
       const batch = writeBatch(db);
 
       carrito.forEach(item => {
-        const newFichaRef = doc(fichasRef); // Genera un ID automático para el nuevo doc
+        const newFichaRef = doc(fichasRef);
         batch.set(newFichaRef, {
           numero: item.numero,
           serie: item.serie,
@@ -273,7 +291,6 @@ export default function Dashboard({ user }) {
         });
       });
 
-      // Actualizar talonario actual
       const nuevoNumero = settings.numeroTalonarioActual + carrito.length;
       batch.set(settingsDocRef, { numeroTalonarioActual: nuevoNumero }, { merge: true });
 
@@ -288,10 +305,11 @@ export default function Dashboard({ user }) {
       }
 
       showToast("Operación Exitosa", msg, tipoMsg);
-      setCarrito([]);
+      setCarrito([]); // Solo limpiamos si el commit fue exitoso
     } catch (error) {
       console.error("Error al procesar:", error);
-      showMessage("Error", "Fallo al registrar.", "error");
+      // No limpiamos el carrito — las fichas siguen ahí para reintentar
+      showToast("Sin conexión", "Las fichas NO se guardaron. Verifica tu señal e intenta de nuevo.", "error");
     }
   };
 
@@ -314,15 +332,10 @@ export default function Dashboard({ user }) {
   const confirmarEliminarFicha = async () => {
     if (!fichaToDelete) return;
     try {
-      const batch = writeBatch(db);
-      const fichaRef = doc(db, `${basePath}/fichas`, fichaToDelete);
-      batch.delete(fichaRef);
-
-      const nuevoNumero = Math.max(1, settings.numeroTalonarioActual - 1);
-      batch.set(settingsDocRef, { numeroTalonarioActual: nuevoNumero }, { merge: true });
-
-      await batch.commit();
-      showToast("Éxito", "Ficha eliminada y número retornado.", "success");
+      // El talonario NO retrocede para evitar números duplicados.
+      // La ficha se elimina del historial y el contador sigue progresivo.
+      await deleteDoc(doc(db, `${basePath}/fichas`, fichaToDelete));
+      showToast("Éxito", "Ficha anulada del historial.", "success");
     } catch (error) {
       showToast("Error", "No se pudo eliminar.", "error");
     } finally { setFichaToDelete(null); }
@@ -331,42 +344,48 @@ export default function Dashboard({ user }) {
   const confirmarDevolverFicha = async () => {
     if (!fichaToReturn) return;
     try {
-      const batch = writeBatch(db);
-      batch.update(doc(db, `${basePath}/fichas`, fichaToReturn), { estado: 'Devuelta' });
-      const nuevoNumero = Math.max(1, settings.numeroTalonarioActual - 1);
-      batch.set(settingsDocRef, { numeroTalonarioActual: nuevoNumero }, { merge: true });
-      await batch.commit();
-      showToast("Éxito", "Ficha devuelta y número retornado.", "success");
+      // El talonario NO retrocede — el número es siempre progresivo.
+      // La ficha queda en historial con estado 'Devuelta' para trazabilidad.
+      await updateDoc(doc(db, `${basePath}/fichas`, fichaToReturn), { estado: 'Devuelta' });
+      showToast("Éxito", "Ficha marcada como Devuelta.", "success");
     } catch (error) {
       showToast("Error", "No se pudo devolver.", "error");
     } finally { setFichaToReturn(null); }
   };
 
   const limpiarHistorial = async () => {
-    const confirm = window.confirm("¿ESTÁS TOTALMENTE SEGURO? Esta acción eliminará TODAS las fichas del historial de forma permanente. No se puede deshacer.");
-    if (!confirm) return;
+    setShowCierreNoche(true);
+  };
 
-    setIsUploading(true);
+  const ejecutarCierreNoche = async () => {
+    setIsCerrando(true);
     try {
+      // 1. Guardar resumen del cierre en Firestore
+      const fichasEf = fichas.filter(f => f.metodo === 'Efectivo' && f.estado === 'Pagado');
+      const fichasQr = fichas.filter(f => f.metodo === 'QR' && f.estado === 'Pagado');
+      await addDoc(collection(db, `${basePath}/cierres`), {
+        fecha: Date.now(),
+        totalEfectivo: fichasEf.reduce((a, b) => a + b.monto, 0),
+        totalQR: fichasQr.reduce((a, b) => a + b.monto, 0),
+        totalFichas: fichas.length,
+        fichasPagadas: fichas.filter(f => f.estado === 'Pagado').length,
+        fichasDevueltas: fichas.filter(f => f.estado === 'Devuelta').length,
+        fichasAnuladas: fichas.filter(f => f.estado === 'Anulada').length,
+        fichasPendientes: fichas.filter(f => f.estado === 'Pendiente').length,
+      });
+
+      // 2. Eliminar todas las fichas activas
       const querySnapshot = await getDocs(fichasRef);
-      if (querySnapshot.empty) {
-        showMessage("Información", "El historial ya está vacío.", "info");
-        setIsUploading(false);
-        return;
-      }
-
-      // Crear un array de promesas de borrado para cada documento.
-      const deletePromises = querySnapshot.docs.map(document => deleteDoc(document.ref));
-
-      // Esperar a que todas las promesas de borrado se completen.
+      const deletePromises = querySnapshot.docs.map(d => deleteDoc(d.ref));
       await Promise.all(deletePromises);
 
-      showMessage("Éxito", "Todo el historial ha sido borrado.", "success");
+      showToast('✓ Noche Cerrada', 'El resumen fue archivado y el historial limpiado.', 'success');
     } catch (error) {
-      console.error("Error al limpiar historial:", error);
-      showMessage("Error", "Hubo un problema al intentar borrar el historial.", "error");
+      console.error('Error al cerrar la noche:', error);
+      showToast('Error', 'No se pudo cerrar la noche. Intenta de nuevo.', 'error');
     } finally {
-      setIsUploading(false);
+      setIsCerrando(false);
+      setShowCierreNoche(false);
     }
   };
 
@@ -393,41 +412,43 @@ export default function Dashboard({ user }) {
     }
   };
 
-  const confirmReceiptUpload = async () => {
+  const confirmReceiptUpload = () => {
     if (!receiptPreview.base64 || receiptPreview.targetIds.length === 0) return;
-    setIsUploading(true);
+
+    // Capturar los datos antes de limpiar el estado
+    const { base64, targetIds } = receiptPreview;
+    const fichasCount = targetIds.length;
+
+    // Liberar la UI inmediatamente — el cajero puede seguir atendiendo
+    setReceiptPreview({ file: null, base64: null, targetIds: [] });
+    setActiveFichaIdForReceipt(null);
+    setSelectedPendientes(new Set());
+    showToast("Procesando…", `Subiendo comprobante para ${fichasCount} ficha(s) en segundo plano.`, "info");
+
+    // Intentar descarga local del comprobante en background
     try {
-      const batch = writeBatch(db);
-      receiptPreview.targetIds.forEach(id => {
-        const fichaRef = doc(db, `${basePath}/fichas`, id);
-        batch.update(fichaRef, { comprobanteUrl: receiptPreview.base64, estado: 'Pagado' });
-      });
-      await batch.commit();
-
-      showToast("Éxito", "Imagen descargada y monto sumado.", "success");
-      // Intentar forzar descarga
-      try {
-        const link = document.createElement("a");
-        link.href = receiptPreview.base64;
-        const now = new Date();
-        const dateStr = now.toISOString().split('T')[0];
-        const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
-        link.download = `${dateStr}_${timeStr}-Babel.jpg`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      } catch (err) {
-        console.error("No se pudo descargar automáticamente: ", err);
-      }
-
-    } catch (error) {
-      showToast("Error", "Error al guardar el comprobante.", "error");
-    } finally {
-      setIsUploading(false);
-      setReceiptPreview({ file: null, base64: null, targetIds: [] });
-      setActiveFichaIdForReceipt(null);
-      setSelectedPendientes(new Set());
+      const link = document.createElement("a");
+      link.href = base64;
+      const now = new Date();
+      const dateStr = now.toISOString().split('T')[0];
+      const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
+      link.download = `${dateStr}_${timeStr}-Babel.jpg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error("No se pudo descargar automáticamente: ", err);
     }
+
+    // Subir a Firestore en background sin bloquear la UI
+    const batch = writeBatch(db);
+    targetIds.forEach(id => {
+      const fichaRef = doc(db, `${basePath}/fichas`, id);
+      batch.update(fichaRef, { comprobanteUrl: base64, estado: 'Pagado' });
+    });
+    batch.commit()
+      .then(() => showToast("✓ Listo", `Comprobante guardado (${fichasCount} ficha(s)).`, "success"))
+      .catch(() => showToast("Error", "No se pudo guardar el comprobante. Reintenta.", "error"));
   };
 
   const handleQRUpload = async (e) => {
@@ -504,6 +525,23 @@ export default function Dashboard({ user }) {
     [fichas]
   );
 
+  // Registra un log de exportación en Firestore
+  const registrarExportacion = async (tipo) => {
+    try {
+      const fichasEf = fichas.filter(f => f.metodo === 'Efectivo' && f.estado === 'Pagado');
+      const fichasQr = fichas.filter(f => f.metodo === 'QR' && f.estado === 'Pagado');
+      await addDoc(collection(db, `${basePath}/exportaciones`), {
+        tipo, // 'dashboard_pdf' | 'dashboard_excel'
+        fecha: Date.now(),
+        totalEfectivo: fichasEf.reduce((a, b) => a + b.monto, 0),
+        totalQR: fichasQr.reduce((a, b) => a + b.monto, 0),
+        totalFichas: fichas.length,
+        fichasPagadas: fichas.filter(f => f.estado === 'Pagado').length,
+        fichasPendientes: fichas.filter(f => f.estado === 'Pendiente').length,
+      });
+    } catch (e) { console.error('Error registrando exportación', e); }
+  };
+
   const exportarExcel = () => {
     if (!window.XLSX) { showMessage("Aviso", "Cargando librería Excel, intenta de nuevo en unos segundos.", "info"); return; }
     
@@ -525,7 +563,7 @@ export default function Dashboard({ user }) {
       ['Fichas en Espera / Pendientes', stats.totalPendientes, '', '', ''],
       ['', '', '', '', ''],
       ['DETALLE DE TRANSACCIONES', '', '', '', ''],
-      ['Nº Ficha', 'Monto (Bs)', 'Estado', 'Método de Pago', 'Hora de Registro']
+      ['Nº Ficha', 'Monto (Bs)', 'Estado', 'Método de Pago', 'Fecha y Hora']
     ];
 
     const sortedFichas = [...fichas].sort((a, b) => {
@@ -541,7 +579,7 @@ export default function Dashboard({ user }) {
         f.monto,
         f.estado,
         f.metodo,
-        new Date(f.createdAt).toLocaleTimeString()
+        new Date(f.createdAt).toLocaleString('es-BO') // Fecha + hora completa
       ]);
     });
 
@@ -595,18 +633,19 @@ export default function Dashboard({ user }) {
     const wb = window.XLSX.utils.book_new();
     window.XLSX.utils.book_append_sheet(wb, ws, "Transacciones");
     window.XLSX.writeFile(wb, `Cajas_Babel_${new Date().toLocaleDateString()}.xlsx`);
+    registrarExportacion('dashboard_excel');
   };
 
   const exportarPDF = () => {
     if (!window.jspdf || !window.jspdf.jsPDF.API.autoTable) {
       showMessage("Aviso", "Cargando librería PDF, intenta de nuevo en unos segundos.", "info");
       if (!document.getElementById('jspdf-script')) {
-        const s1 = document.createElement('script'); 
+        const s1 = document.createElement('script');
         s1.id = 'jspdf-script';
-        s1.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'; 
+        s1.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
         s1.onload = () => {
-          const s2 = document.createElement('script'); 
-          s2.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js'; 
+          const s2 = document.createElement('script');
+          s2.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js';
           document.head.appendChild(s2);
         };
         document.head.appendChild(s1);
@@ -614,109 +653,173 @@ export default function Dashboard({ user }) {
       return;
     }
 
-    showMessage("Exportación", "Generando PDF corporativo con fotos. Por favor espera unos segundos...", "info");
+    showToast("Exportando…", "Generando PDF. Por favor espera.", "info");
 
     setTimeout(() => {
       const { jsPDF } = window.jspdf;
-      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      const W = doc.internal.pageSize.getWidth();
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const W = doc.internal.pageSize.getWidth();   // 297mm
+      const H = doc.internal.pageSize.getHeight();  // 210mm
       const M = 14;
-      
-      // Header Dark
+      const NOW = new Date();
+
+      // ── DATOS ──────────────────────────────────────────────────
+      const fichasEfPagadas  = fichas.filter(f => f.metodo === 'Efectivo' && f.estado === 'Pagado');
+      const fichasQrPagadas  = fichas.filter(f => f.metodo === 'QR'       && f.estado === 'Pagado');
+      const fichasPend       = fichas.filter(f => f.estado === 'Pendiente');
+      const sumEf  = fichasEfPagadas.reduce((a, b) => a + b.monto, 0);
+      const sumQr  = fichasQrPagadas.reduce((a, b) => a + b.monto, 0);
+      const total  = sumEf + sumQr;
+      const emitidas = fichas.filter(f => f.estado !== 'Devuelta').length;
+
+      // ── HEADER ─────────────────────────────────────────────────
       doc.setFillColor(2, 6, 23);
-      doc.rect(0, 0, W, 40, 'F');
-      // Accent Cyan
+      doc.rect(0, 0, W, 34, 'F');
       doc.setFillColor(6, 182, 212);
-      doc.rect(0, 0, 6, 40, 'F');
-      
+      doc.rect(0, 0, 6, 34, 'F');
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(22); doc.setTextColor(255, 255, 255);
-      doc.text('BABEL - REPORTE DE CAJAS', M + 4, 16);
+      doc.setFontSize(18); doc.setTextColor(255, 255, 255);
+      doc.text('BABEL DISCOTECA — REPORTE DE CAJAS', M + 4, 13);
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(11); doc.setTextColor(148, 163, 184);
-      doc.text('Fecha de emisión: ' + new Date().toLocaleString(), M + 4, 25);
-      
-      let y = 48;
-      
-      // Resumen Ejecutivo
-      doc.setFillColor(248, 250, 252);
-      doc.setDrawColor(226, 232, 240);
-      doc.roundedRect(M, y, W - M * 2, 36, 3, 3, 'FD');
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(15, 23, 42);
-      doc.text('RESUMEN EJECUTIVO', M + 5, y + 8);
-      
-      const fichasEf = fichas.filter(f => f.metodo === 'Efectivo' && f.estado === 'Pagado');
-      const fichasQr = fichas.filter(f => f.metodo === 'QR' && f.estado === 'Pagado');
-      const sumEf = fichasEf.reduce((a, b) => a + b.monto, 0);
-      const sumQr = fichasQr.reduce((a, b) => a + b.monto, 0);
+      doc.setFontSize(9); doc.setTextColor(148, 163, 184);
+      doc.text(`Generado: ${NOW.toLocaleString('es-BO')}   ·   Caja: ${activeTab === 'efectivo' ? 'EFECTIVO' : 'QR'}`, M + 4, 21);
+      doc.setTextColor(6, 182, 212);
+      doc.text('@Sr.Avila', W - M, 27, { align: 'right' });
 
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(71, 85, 105);
-      doc.text(`Total Fichas Emitidas: ${fichas.length}`, M + 5, y + 16);
-      doc.text(`Fichas Pendientes: ${stats.totalPendientes}`, M + 70, y + 16);
-      
-      doc.text(`Efectivo: Bs. ${sumEf}`, M + 5, y + 24);
-      doc.text(`QR: Bs. ${sumQr}`, M + 70, y + 24);
+      let y = 40;
 
-      doc.setFont('helvetica', 'bold'); doc.setTextColor(6, 182, 212);
-      doc.text(`MONTO TOTAL RECAUDADO: Bs. ${stats.montoTotal}`, M + 5, y + 32);
-      
-      y += 46;
-      
-      // Tabla
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(15, 23, 42);
-      doc.text('DETALLE DE TRANSACCIONES', M, y);
-      y += 4;
-
-      const sortedFichas = [...fichas].sort((a, b) => {
-        const isAEf = a.metodo === 'Efectivo';
-        const isBEf = b.metodo === 'Efectivo';
-        if (activeTab === 'efectivo') return isAEf && !isBEf ? -1 : (!isAEf && isBEf ? 1 : 0);
-        return !isAEf && isBEf ? -1 : (isAEf && !isBEf ? 1 : 0);
+      // ── 4 TARJETAS RESUMEN ─────────────────────────────────────
+      const cards = [
+        { label: 'TOTAL RECAUDADO', value: `Bs. ${total}`,   fill: [6, 182, 212],  text: [2, 6, 23] },
+        { label: 'CAJA EFECTIVO',   value: `Bs. ${sumEf}`,   fill: [16, 185, 129], text: [255, 255, 255] },
+        { label: 'CAJA QR',         value: `Bs. ${sumQr}`,   fill: [139, 92, 246], text: [255, 255, 255] },
+        { label: 'FICHAS ACTIVAS',  value: `${emitidas}`,    fill: [30, 41, 59],   text: [148, 163, 184] },
+      ];
+      const cardW = (W - M * 2 - 12) / 4;
+      cards.forEach((card, i) => {
+        const cx = M + i * (cardW + 4);
+        doc.setFillColor(...card.fill);
+        doc.roundedRect(cx, y, cardW, 22, 3, 3, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.5); doc.setTextColor(...card.text);
+        doc.text(card.label, cx + cardW / 2, y + 7, { align: 'center' });
+        doc.setFontSize(13);
+        doc.text(card.value, cx + cardW / 2, y + 17, { align: 'center' });
       });
+      y += 28;
 
-      const allRows = sortedFichas.map(f => [
-        f.serie ? `${f.serie}-${f.numero}` : f.numero,
-        `Bs. ${f.monto}`, f.estado, f.metodo,
-        new Date(f.createdAt).toLocaleTimeString(),
-        f.comprobanteUrl ? 'Sí' : 'No'
-      ]);
+      // ── HELPER: tabla por sección de caja ─────────────────────
+      const drawCajaTable = (titulo, colorRGB, filasFichas, subtotal) => {
+        if (filasFichas.length === 0) return;
 
-      doc.autoTable({
-        startY: y, margin: { left: M, right: M },
-        head: [['Ficha', 'Monto', 'Estado', 'Método', 'Hora', 'Comprobante']],
-        body: allRows.length > 0 ? allRows : [['Sin datos', '—', '—', '—', '—', '—']],
-        styles: { font: 'helvetica', fontSize: 10, cellPadding: 3 },
-        headStyles: { fillColor: [2, 6, 23], textColor: 255, fontStyle: 'bold' },
-        alternateRowStyles: { fillColor: [248, 250, 252] }
-      });
-      
-      y = doc.lastAutoTable.finalY + 15;
-      const comprobantes = sortedFichas.filter(f => f.comprobanteUrl);
+        // Barra de título de sección
+        doc.setFillColor(...colorRGB);
+        doc.rect(M, y, W - M * 2, 7, 'F');
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+        doc.setTextColor(255, 255, 255);
+        doc.text(`  ${titulo}  (${filasFichas.length} ficha${filasFichas.length !== 1 ? 's' : ''})`, M + 2, y + 5);
+        doc.text(`Subtotal: Bs. ${subtotal}`, W - M - 2, y + 5, { align: 'right' });
+        y += 8;
+
+        const bodyRows = [...filasFichas]
+          .sort((a, b) => Number(a.numero) - Number(b.numero))
+          .map(f => [
+            { content: f.serie ? `${f.serie}-${String(f.numero).padStart(3, '0')}` : `#${f.numero}`, styles: { fontStyle: 'bold' } },
+            { content: `Bs. ${f.monto}`, styles: { halign: 'right' } },
+            f.estado,
+            { content: new Date(f.createdAt).toLocaleString('es-BO'), styles: { halign: 'center' } },
+          ]);
+
+        // Fila de subtotal coloreada al final
+        const totalRow = [
+          { content: '', styles: { fillColor: colorRGB } },
+          { content: `TOTAL:  Bs. ${subtotal}`, styles: { halign: 'right', fontStyle: 'bold', fontSize: 10, fillColor: colorRGB, textColor: [255, 255, 255] } },
+          { content: '', styles: { fillColor: colorRGB } },
+          { content: `${filasFichas.length} fichas pagadas`, styles: { halign: 'center', fillColor: colorRGB, textColor: [255, 255, 255] } },
+        ];
+
+        doc.autoTable({
+          startY: y,
+          margin: { left: M, right: M },
+          head: [['N° Ficha', 'Monto', 'Estado', 'Fecha y Hora de Registro']],
+          body: [...bodyRows, totalRow],
+          styles: { font: 'helvetica', fontSize: 9, cellPadding: 2.2, textColor: [15, 23, 42] },
+          headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9 },
+          alternateRowStyles: { fillColor: [248, 250, 252] },
+          columnStyles: {
+            0: { cellWidth: 30 },
+            1: { cellWidth: 30 },
+            2: { cellWidth: 28 },
+          },
+          willDrawCell: (data) => {
+            // Colorear celda de estado según valor
+            if (data.column.index === 2 && data.section === 'body' && data.row.index < bodyRows.length) {
+              const est = data.cell.raw;
+              if (est === 'Pagado')    data.cell.styles.textColor = [16, 185, 129];
+              if (est === 'Pendiente') data.cell.styles.textColor = [249, 115, 22];
+              if (est === 'Anulada')   data.cell.styles.textColor = [239, 68, 68];
+            }
+          },
+        });
+        y = doc.lastAutoTable.finalY + 7;
+      };
+
+      // ── TABLAS SEGÚN PESTAÑA ACTIVA ────────────────────────────
+      if (activeTab === 'efectivo') {
+        drawCajaTable('CAJA EFECTIVO', [16, 185, 129], fichasEfPagadas, sumEf);
+        if (fichasQrPagadas.length > 0 && y > H - 50) { doc.addPage(); y = 16; }
+        drawCajaTable('CAJA QR', [139, 92, 246], fichasQrPagadas, sumQr);
+      } else {
+        drawCajaTable('CAJA QR', [139, 92, 246], fichasQrPagadas, sumQr);
+        if (fichasEfPagadas.length > 0 && y > H - 50) { doc.addPage(); y = 16; }
+        drawCajaTable('CAJA EFECTIVO', [16, 185, 129], fichasEfPagadas, sumEf);
+      }
+
+      // ── AVISO PENDIENTES ───────────────────────────────────────
+      if (fichasPend.length > 0) {
+        if (y > H - 18) { doc.addPage(); y = 16; }
+        doc.setFillColor(249, 115, 22);
+        doc.roundedRect(M, y, W - M * 2, 7, 2, 2, 'F');
+        doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
+        doc.text(`  ⚠  ${fichasPend.length} ficha(s) QR aún PENDIENTES — No incluidas en el total recaudado.`, M + 2, y + 4.8);
+        y += 10;
+      }
+
+      // ── COMPROBANTES DE PAGO (3 por fila en landscape) ─────────
+      const comprobantes = fichasQrPagadas.filter(f => f.comprobanteUrl);
       if (comprobantes.length > 0) {
         doc.addPage();
-        y = 18;
-        doc.setFont('helvetica', 'bold'); doc.setTextColor(2, 6, 23);
-        doc.text('EVIDENCIAS Y COMPROBANTES', M, y);
-        y += 10;
-        
-        const imgW = (W - M * 2 - 10) / 2;
+        y = 16;
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(2, 6, 23);
+        doc.text('COMPROBANTES DE PAGO — CAJA QR', M, y);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(100, 116, 139);
+        doc.text(`${comprobantes.length} comprobante(s) registrado(s)`, M, y + 5);
+        y += 12;
+
+        const imgW = (W - M * 2 - 10) / 3;
         let x = M;
-        
         comprobantes.forEach((f, i) => {
-          if (y + 80 > 280) { doc.addPage(); y = 18; x = M; }
+          if (y + 68 > H - 8) { doc.addPage(); y = 16; x = M; }
           try {
-            doc.addImage(f.comprobanteUrl, 'JPEG', x, y, imgW, 70, undefined, 'FAST');
-            doc.setFontSize(9);
-            doc.text(`Ficha: ${f.serie ? f.serie + '-' : ''}${f.numero}`, x + imgW / 2, y + 75, { align: 'center' });
+            const ext = (f.comprobanteUrl || '').startsWith('data:image/webp') ? 'WEBP' : 'JPEG';
+            doc.addImage(f.comprobanteUrl, ext, x, y, imgW, 58, undefined, 'FAST');
+            doc.setFontSize(7.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(15, 23, 42);
+            doc.text(
+              `${f.serie ? f.serie + '-' : ''}${f.numero}  ·  Bs. ${f.monto}`,
+              x + imgW / 2, y + 62, { align: 'center' }
+            );
           } catch (e) {}
-          
-          if (i % 2 === 0) { x += imgW + 10; } 
-          else { x = M; y += 85; }
+          x += imgW + 5;
+          if ((i + 1) % 3 === 0) { x = M; y += 68; }
         });
       }
-      doc.save(`cajas_babel_${new Date().toLocaleDateString()}.pdf`);
+
+      doc.save(`Babel_Cajas_${NOW.toISOString().split('T')[0]}.pdf`);
+      registrarExportacion('dashboard_pdf');
     }, 100);
   };
+
+
 
   const { theme, toggleTheme } = useTheme();
 
@@ -797,9 +900,9 @@ export default function Dashboard({ user }) {
         </div>
       </header>
 
-      <main className="w-full max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-8 mt-2 sm:mt-4">
+      <main className="w-full max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 grid grid-cols-1 sm:grid-cols-12 gap-4 sm:gap-8 mt-2 sm:mt-4">
         {/* COLUMNA IZQUIERDA (Controles) */}
-        <div className="md:col-span-6 lg:col-span-7 space-y-4 sm:space-y-8">
+        <div className="sm:col-span-6 lg:col-span-7 space-y-4 sm:space-y-8">
 
           {activeTab === 'efectivo' && (
             <section className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-3xl p-6 shadow-md shadow-slate-300/50 dark:shadow-black/20 relative overflow-hidden transition-colors">
@@ -905,7 +1008,7 @@ export default function Dashboard({ user }) {
         </div>
 
         {/* COLUMNA DERECHA (Historial) */}
-        <div className="md:col-span-6 lg:col-span-5 flex flex-col gap-6">
+        <div className="sm:col-span-6 lg:col-span-5 flex flex-col gap-6">
           <div className="bg-slate-100/50 dark:bg-slate-900/50 border border-slate-300 dark:border-slate-800 rounded-3xl p-4 sm:p-6 flex flex-col transition-colors h-[350px] lg:h-[80vh]">
             <div className="flex flex-col gap-4 mb-6 shrink-0">
               <div className="flex justify-between items-center">
@@ -1039,11 +1142,11 @@ export default function Dashboard({ user }) {
         <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-sm z-[80] flex flex-col items-center justify-center p-4">
           <div className="w-full max-w-sm bg-slate-900 border border-red-500/50 rounded-3xl p-6 text-center">
             <Trash2 className="text-red-500 mx-auto mb-4" size={40} />
-            <h3 className="text-xl font-bold text-white mb-2 uppercase">¿Eliminar Ficha?</h3>
-            <p className="text-slate-400 text-sm mb-6">Esto regresará un número al conteo de fichas disponibles.</p>
+            <h3 className="text-xl font-bold text-white mb-2 uppercase">¿Anular Ficha?</h3>
+            <p className="text-slate-400 text-sm mb-6">La ficha será eliminada del historial. El número del talonario <span className="text-white font-bold">no retrocede</span> para evitar duplicados.</p>
             <div className="flex gap-3">
               <button onClick={() => setFichaToDelete(null)} className="flex-1 py-3 rounded-xl border border-slate-700 text-slate-300">Cancelar</button>
-              <button onClick={confirmarEliminarFicha} className="flex-1 py-3 rounded-xl bg-red-600 text-white font-bold uppercase">Eliminar</button>
+              <button onClick={confirmarEliminarFicha} className="flex-1 py-3 rounded-xl bg-red-600 text-white font-bold uppercase">Anular</button>
             </div>
           </div>
         </div>
@@ -1054,7 +1157,7 @@ export default function Dashboard({ user }) {
           <div className="w-full max-w-sm bg-slate-900 border border-slate-500/50 rounded-3xl p-6 text-center">
             <LogOut className="text-slate-400 mx-auto mb-4 rotate-180" size={40} />
             <h3 className="text-xl font-bold text-white mb-2 uppercase">¿Devolver Ficha?</h3>
-            <p className="text-slate-400 text-sm mb-6">La ficha quedará marcada como Devuelta y su número retornará al conteo disponible.</p>
+            <p className="text-slate-400 text-sm mb-6">La ficha quedará marcada como <span className="text-slate-200 font-bold">Devuelta</span> en el historial. El número del talonario no retrocede.</p>
             <div className="flex gap-3">
               <button onClick={() => setFichaToReturn(null)} className="flex-1 py-3 rounded-xl border border-slate-700 text-slate-300">Cancelar</button>
               <button onClick={confirmarDevolverFicha} className="flex-1 py-3 rounded-xl bg-slate-600 text-white font-bold uppercase">Devolver</button>
@@ -1093,25 +1196,16 @@ export default function Dashboard({ user }) {
         </div>
       )}
 
-      {/* TOAST NOTIFICATION */}
-      {toastMessage.show && (
-        <div className={`fixed top-4 right-4 z-[110] max-w-sm w-[90%] p-4 rounded-2xl shadow-2xl animate-in slide-in-from-top-4 fade-in duration-300 border backdrop-blur-xl ${
-          toastMessage.type === 'success' ? 'bg-lime-500/20 border-lime-500/50 text-lime-400' :
-          toastMessage.type === 'warning' ? 'bg-orange-500/20 border-orange-500/50 text-orange-400' :
-          toastMessage.type === 'error' ? 'bg-red-500/20 border-red-500/50 text-red-400' :
-          'bg-cyan-500/20 border-cyan-500/50 text-cyan-400'
-        }`}>
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h4 className="font-bold uppercase tracking-wider text-sm mb-1">{toastMessage.title}</h4>
-              <p className="text-xs font-medium text-slate-200">{toastMessage.message}</p>
-            </div>
-            <button onClick={() => setToastMessage({ ...toastMessage, show: false })} className="text-white/50 hover:text-white transition-colors shrink-0">
-              <X size={16} />
-            </button>
-          </div>
+      {/* TOAST NOTIFICATION DYNAMIC ISLAND */}
+      <div className={`toast-pill ${toastMessage.show ? 'toast-visible' : ''} toast-${toastMessage.type}`}>
+        <div className="toast-icon">
+          {toastMessage.type === 'success' && <Check size={12} strokeWidth={4} className="text-white" />}
+          {toastMessage.type === 'error' && <X size={12} strokeWidth={4} className="text-white" />}
+          {toastMessage.type === 'warning' && <span className="font-black text-white">!</span>}
+          {toastMessage.type === 'info' && <span className="font-black text-white">i</span>}
         </div>
-      )}
+        <span>{toastMessage.title ? `${toastMessage.title}: ` : ''}{toastMessage.message}</span>
+      </div>
 
       <input type="file" accept="image/*" capture="environment" ref={cameraInputRef} className="hidden" onChange={handleReceiptSelection} />
       <input type="file" accept="image/*" ref={qrUploadRef} className="hidden" onChange={handleQRUpload} />
@@ -1141,6 +1235,101 @@ export default function Dashboard({ user }) {
           </div>
         </div>
       )}
+      {/* CIERRE DE NOCHE */}
+      {showCierreNoche && (
+        <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-[90] flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-slate-900 border border-amber-500/40 rounded-3xl p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <Archive className="text-amber-400" size={28} />
+              <h3 className="text-xl font-bold text-white uppercase tracking-wider">Cierre de Noche</h3>
+            </div>
+
+            <div className="space-y-3 mb-6">
+              <div className="bg-slate-950 rounded-2xl p-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-400 font-bold uppercase">Efectivo</span>
+                  <span className="text-lime-400 font-black">{fichas.filter(f => f.metodo === 'Efectivo' && f.estado === 'Pagado').reduce((a, b) => a + b.monto, 0)} Bs</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-400 font-bold uppercase">QR</span>
+                  <span className="text-purple-400 font-black">{fichas.filter(f => f.metodo === 'QR' && f.estado === 'Pagado').reduce((a, b) => a + b.monto, 0)} Bs</span>
+                </div>
+                <div className="flex justify-between text-sm border-t border-slate-800 pt-2 mt-2">
+                  <span className="text-slate-300 font-black uppercase">Total Recaudado</span>
+                  <span className="text-cyan-400 font-black text-lg">{fichas.filter(f => f.estado === 'Pagado').reduce((a, b) => a + b.monto, 0)} Bs</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="bg-slate-950 rounded-xl p-3">
+                  <p className="text-2xl font-black text-white">{fichas.length}</p>
+                  <p className="text-[10px] text-slate-500 uppercase font-bold">Emitidas</p>
+                </div>
+                <div className="bg-slate-950 rounded-xl p-3">
+                  <p className="text-2xl font-black text-lime-400">{fichas.filter(f => f.estado === 'Pagado').length}</p>
+                  <p className="text-[10px] text-slate-500 uppercase font-bold">Pagadas</p>
+                </div>
+                <div className="bg-slate-950 rounded-xl p-3">
+                  <p className="text-2xl font-black text-slate-400">{fichas.filter(f => f.estado === 'Devuelta' || f.estado === 'Anulada').length}</p>
+                  <p className="text-[10px] text-slate-500 uppercase font-bold">Dev/Anul</p>
+                </div>
+              </div>
+
+              {fichas.filter(f => f.estado === 'Pendiente').length > 0 && (
+                <div className="bg-orange-500/10 border border-orange-500/30 rounded-xl p-3 flex items-center gap-2">
+                  <Clock className="text-orange-400 shrink-0" size={16} />
+                  <p className="text-orange-400 text-xs font-bold">{fichas.filter(f => f.estado === 'Pendiente').length} ficha(s) aún PENDIENTES sin cobrar.</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setShowCierreNoche(false)} disabled={isCerrando} className="flex-1 py-3 rounded-xl border border-slate-700 text-slate-300 font-bold">Cancelar</button>
+              <button onClick={ejecutarCierreNoche} disabled={isCerrando} className="flex-1 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-900 font-black uppercase flex items-center justify-center gap-2">
+                {isCerrando ? <div className="w-5 h-5 border-2 border-slate-900 border-t-transparent rounded-full animate-spin" /> : <Archive size={18} />}
+                {isCerrando ? 'Cerrando...' : 'Archivar y Cerrar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* HISTORIAL DE EXPORTACIONES */}
+      {showExportHistory && (
+        <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-[90] flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="w-full sm:max-w-md bg-slate-900 border border-slate-700 rounded-t-3xl sm:rounded-3xl">
+            <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <History className="text-cyan-400" size={22} />
+                <h3 className="text-lg font-bold text-white uppercase tracking-wider">Historial de Exportaciones</h3>
+              </div>
+              <button onClick={() => setShowExportHistory(false)} className="text-slate-500 hover:text-white p-1"><X size={20} /></button>
+            </div>
+            <div className="overflow-y-auto max-h-[60vh] p-4 space-y-3 custom-scrollbar">
+              {exportHistory.length === 0 ? (
+                <p className="text-center text-slate-500 font-bold uppercase py-10 text-sm">Sin exportaciones registradas</p>
+              ) : exportHistory.map(exp => (
+                <div key={exp.id} className="bg-slate-950 rounded-2xl p-4 border border-slate-800">
+                  <div className="flex justify-between items-start mb-2">
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                      exp.tipo === 'dashboard_pdf' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+                      exp.tipo === 'dashboard_excel' ? 'bg-lime-500/20 text-lime-400 border border-lime-500/30' :
+                      'bg-purple-500/20 text-purple-400 border border-purple-500/30'
+                    }`}>{exp.tipo === 'dashboard_pdf' ? 'PDF Cajas' : exp.tipo === 'dashboard_excel' ? 'Excel Cajas' : 'Rendición'}</span>
+                    <span className="text-slate-500 text-[10px] font-bold">{new Date(exp.fecha).toLocaleString('es-BO')}</span>
+                  </div>
+                  <div className="flex gap-4 mt-1">
+                    <div><p className="text-[10px] text-slate-500 uppercase">Efectivo</p><p className="text-lime-400 font-black text-sm">{exp.totalEfectivo} Bs</p></div>
+                    <div><p className="text-[10px] text-slate-500 uppercase">QR</p><p className="text-purple-400 font-black text-sm">{exp.totalQR} Bs</p></div>
+                    <div><p className="text-[10px] text-slate-500 uppercase">Fichas</p><p className="text-white font-black text-sm">{exp.totalFichas}</p></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* FOOTER FIRMA */}
       <footer className="w-full text-center py-10 mt-8 opacity-70">
         <p className="text-slate-500 dark:text-slate-400 font-medium text-sm italic mb-2">
@@ -1154,72 +1343,3 @@ export default function Dashboard({ user }) {
   );
 }
 
-// --- COMPONENTES MEMORIZADOS PARA RENDIMIENTO FLUIDO ---
-const FichaQRMZ = React.memo(({ ficha, isSelected, onToggle, onQuitarEspera, onPonerEspera, onReturn, onPhoto }) => {
-  return (
-    <div onClick={() => onToggle(ficha.id)} className={`bg-slate-950 border cursor-pointer transition-all shadow-lg ${isSelected ? 'border-cyan-500 shadow-cyan-500/10 scale-[1.01]' : ficha.enEspera ? 'border-orange-500/50 shadow-orange-500/10' : 'border-slate-800 shadow-black/20'} p-3 sm:p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3`}>
-      <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-auto">
-        <div className={`shrink-0 w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-colors ${isSelected ? 'bg-cyan-500 border-cyan-500' : 'border-slate-700'}`}>
-          {isSelected && <Check size={14} className="text-slate-900" strokeWidth={4} />}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-center gap-1 sm:gap-2">
-            <span className="text-2xl sm:text-3xl font-black text-white">{ficha.serie ? `${ficha.serie}-` : '#'}{ficha.numero}</span>
-            <span className="bg-purple-600/20 text-purple-400 text-[9px] sm:text-[10px] px-2 py-0.5 rounded-full uppercase font-bold border border-purple-600/30 whitespace-nowrap">QR Pendiente</span>
-            {ficha.enEspera && <span className="bg-orange-500/20 text-orange-500 text-[9px] sm:text-[10px] px-2 py-0.5 rounded-full uppercase font-bold border border-orange-500/30 whitespace-nowrap">En Espera</span>}
-          </div>
-          <p className={`text-lg sm:text-xl font-black mt-0.5 sm:mt-1 ${ficha.monto === 30 ? 'text-pink-500' : 'text-cyan-400'}`}>{ficha.monto} Bs</p>
-        </div>
-      </div>
-      <div className="flex items-stretch sm:items-center gap-2 w-full sm:w-auto pl-9 sm:pl-0 mt-1 sm:mt-0" onClick={(e) => e.stopPropagation()}>
-        {ficha.enEspera ? (
-          <button onClick={() => onQuitarEspera(ficha.id)} className="flex-1 sm:flex-none flex justify-center items-center p-2 sm:p-3 bg-red-600/20 text-red-500 rounded-xl hover:bg-red-600 hover:text-white border border-red-600/30" title="Quitar de Espera"><X size={20} /></button>
-        ) : (
-          <button onClick={() => onPonerEspera(ficha.id)} className="flex-1 sm:flex-none flex justify-center items-center p-2 sm:p-3 bg-orange-500/20 text-orange-500 rounded-xl hover:bg-orange-500 hover:text-white border border-orange-500/30" title="Poner en Espera"><Clock size={20} /></button>
-        )}
-        <button onClick={() => onReturn(ficha.id)} className="flex-1 sm:flex-none flex justify-center items-center p-2 sm:p-3 bg-slate-600/20 text-slate-400 rounded-xl hover:bg-slate-500 hover:text-white border border-slate-600/30" title="Devolver Ficha"><LogOut size={18} className="rotate-180" /></button>
-        <button onClick={() => onPhoto(ficha.id)} className="flex-[2] sm:flex-none flex justify-center items-center px-3 sm:px-4 py-2 sm:py-3 bg-lime-500 hover:bg-lime-600 text-slate-900 font-bold uppercase tracking-wider rounded-xl transition-all gap-1 sm:gap-2 text-[10px] sm:text-sm shadow-lg shadow-lime-500/20 whitespace-nowrap"><Camera size={16} /> Foto</button>
-      </div>
-    </div>
-  );
-});
-
-const FichaHistorialMZ = React.memo(({ ficha, activeTab, onMarcarPagado, onViewImage, onReturn, onDelete, onPonerEspera, onQuitarEspera }) => {
-  return (
-    <div className={`bg-slate-950 border ${ficha.enEspera ? 'border-orange-500/30' : 'border-slate-800'} p-3 sm:p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg shadow-black/30 hover:border-slate-700 transition-colors`}>
-      <div className="flex-1 w-full sm:w-auto">
-        <div className="flex flex-wrap items-center gap-1 sm:gap-2">
-          <span className="text-2xl sm:text-3xl font-black text-white">{ficha.serie ? `${ficha.serie}-` : '#'}{ficha.numero}</span>
-          {ficha.estado === 'Pendiente' ? <span className="bg-orange-500/10 text-orange-400 text-[9px] sm:text-[10px] px-2 py-0.5 rounded-full uppercase font-bold border border-orange-500/20">Pendiente</span> :
-            ficha.estado === 'Anulada' ? <span className="bg-red-500/10 text-red-500 text-[9px] sm:text-[10px] px-2 py-0.5 rounded-full uppercase font-bold border border-red-500/20">Anulada</span> :
-              ficha.estado === 'Devuelta' ? <span className="bg-slate-600/20 text-slate-400 text-[9px] sm:text-[10px] px-2 py-0.5 rounded-full uppercase font-bold border border-slate-600/30">Devuelta</span> :
-                <span className="bg-lime-400/10 text-lime-400 text-[9px] sm:text-[10px] px-2 py-0.5 rounded-full uppercase font-bold border border-lime-400/20">Pagado</span>}
-          {ficha.enEspera && <span className="bg-orange-500/20 text-orange-500 text-[9px] sm:text-[10px] px-2 py-0.5 rounded-full uppercase font-bold border border-orange-500/30">Espera</span>}
-        </div>
-        <div className="flex flex-wrap items-center gap-2 mt-0.5 sm:mt-1">
-          {ficha.monto > 0 ? <span className={`text-lg sm:text-xl font-black ${ficha.monto === 30 ? 'text-pink-500' : 'text-cyan-400'}`}>{ficha.monto} Bs</span> : <span className="text-lg sm:text-xl font-black text-slate-500">Sin Monto</span>}
-          <span className="text-slate-500 text-xs font-bold tracking-widest ml-1 sm:ml-2">{new Date(ficha.createdAt).toLocaleTimeString()} <span className="uppercase mx-1">· {ficha.metodo}</span></span>
-        </div>
-      </div>
-      <div className="flex items-stretch sm:items-center gap-2 w-full sm:w-auto mt-1 sm:mt-0">
-        {ficha.estado !== 'Devuelta' && ficha.estado !== 'Anulada' && (
-          ficha.enEspera ? (
-            <button onClick={() => onQuitarEspera(ficha.id)} className="flex-1 sm:flex-none flex justify-center items-center p-2 sm:p-3 bg-red-600/20 text-red-500 rounded-xl hover:bg-red-600 hover:text-white border border-red-600/30 transition-colors" title="Quitar de Espera"><X size={20} /></button>
-          ) : (
-            <button onClick={() => onPonerEspera(ficha.id)} className="flex-1 sm:flex-none flex justify-center items-center p-2 sm:p-3 bg-orange-500/20 text-orange-500 rounded-xl hover:bg-orange-500 hover:text-white border border-orange-500/30 transition-colors" title="Poner en Espera"><Clock size={20} /></button>
-          )
-        )}
-        {ficha.estado === 'Pendiente' && activeTab === 'efectivo' && (
-          <button onClick={() => onMarcarPagado(ficha.id)} className="flex-1 sm:flex-none flex justify-center items-center p-2 sm:p-3 bg-lime-500/20 text-lime-500 rounded-xl hover:bg-lime-500 hover:text-white border border-lime-500/30 transition-colors" title="Marcar como Pagado"><Check size={20} /></button>
-        )}
-        {ficha.comprobanteUrl && (
-          <button onClick={() => onViewImage(ficha.comprobanteUrl)} className="flex-1 sm:flex-none flex justify-center items-center p-2 sm:p-3 bg-purple-500/20 text-purple-400 rounded-xl hover:bg-purple-500 hover:text-white border border-purple-500/30 transition-colors" title="Ver Comprobante"><Eye size={20} /></button>
-        )}
-        {ficha.estado !== 'Devuelta' && ficha.estado !== 'Anulada' && (
-          <button onClick={() => onReturn(ficha.id)} className="flex-1 sm:flex-none flex justify-center items-center p-2 sm:p-3 bg-slate-600/20 text-slate-400 rounded-xl hover:bg-slate-500 hover:text-white border border-slate-600/30 transition-colors" title="Devolver Ficha"><LogOut size={20} className="rotate-180" /></button>
-        )}
-        <button onClick={() => onDelete(ficha.id)} className="flex-1 sm:flex-none flex justify-center items-center p-2 sm:p-3 bg-red-600/20 text-red-500 rounded-xl hover:bg-red-600 hover:text-white border border-red-600/30 transition-colors" title="Eliminar"><Trash2 size={20} /></button>
-      </div>
-    </div>
-  );
-});

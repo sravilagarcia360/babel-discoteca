@@ -1,32 +1,50 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Download, Camera, Trash2, Image as ImageIcon, X, Check, Edit2 } from 'lucide-react';
+import { Download, Camera, Trash2, Image as ImageIcon, X, Check, Edit2, RotateCcw, StickyNote } from 'lucide-react';
 
 export default function RendicionDeCuentas() {
   const [activeTab, setActiveTab] = useState('entradas');
   const [toastMessage, setToastMessage] = useState(null);
 
-  const [state, setState] = useState({
+  const STORAGE_KEY = 'babel_rendicion_draft';
+
+  const estadoInicial = {
     entradas: {
       montoInicial: 0,
       fisico: { lineas: [] },
       qr: { lineas: [] },
       talonarios: [],
-      fotoRendicion: null
+      fotoRendicion: null,
+      notas: ''
     },
     guardarropia: {
       montoInicial: 0,
       fisico: { lineas: [] },
       qr: { lineas: [] },
       talonarios: [],
-      fotoRendicion: null
+      fotoRendicion: null,
+      notas: ''
     }
+  };
+
+  // Inicializar desde localStorage si existe un borrador guardado
+  const [state, setState] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Aseguramos que el campo notas exista aunque el draft sea viejo
+        parsed.entradas.notas   = parsed.entradas.notas   || '';
+        parsed.guardarropia.notas = parsed.guardarropia.notas || '';
+        return parsed;
+      }
+    } catch (e) {}
+    return estadoInicial;
   });
 
-  // Inputs temporales para cada sección
-  const [inputs, setInputs] = useState({
-    entradas: { ef: { cant: '', precio: '' }, eq: { cant: '', precio: '' }, talonario: { num: '', color: '', foto: null } },
-    guardarropia: { gf: { cant: '', precio: '' }, gq: { cant: '', precio: '' }, talonario: { num: '', color: '', foto: null } }
-  });
+  // Auto-guardar en localStorage cada vez que cambia el estado
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+  }, [state]);
 
   useEffect(() => {
     // Cargar librerías externas
@@ -46,6 +64,13 @@ export default function RendicionDeCuentas() {
       document.body.appendChild(script3);
     }
   }, []);
+
+  const limpiarTodo = () => {
+    if (!window.confirm('¿Limpiar todo el formulario de Rendición? Se perderán todos los datos ingresados.')) return;
+    setState(estadoInicial);
+    localStorage.removeItem(STORAGE_KEY);
+    toast('Formulario limpiado', 'ok');
+  };
 
   const toast = (msg, type = 'ok') => {
     setToastMessage({ msg, type });
@@ -393,6 +418,22 @@ export default function RendicionDeCuentas() {
     
     return (
       <div className="space-y-6">
+        {/* SUBTOTALES EN VIVO */}
+        <div className="bg-slate-950 dark:bg-slate-950 border border-slate-800 rounded-2xl p-4 grid grid-cols-3 gap-4 text-center">
+          <div>
+            <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Efectivo</p>
+            <p className={`text-xl font-black ${isEnt ? 'text-green-400' : 'text-purple-400'}`}>Bs {calcLineas(s.fisico.lineas).toFixed(0)}</p>
+          </div>
+          <div>
+            <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">QR</p>
+            <p className={`text-xl font-black ${isEnt ? 'text-green-400' : 'text-purple-400'}`}>Bs {calcLineas(s.qr.lineas).toFixed(0)}</p>
+          </div>
+          <div className="border-l border-slate-800">
+            <p className="text-[10px] text-cyan-500 uppercase font-bold mb-1">Subtotal</p>
+            <p className="text-xl font-black text-cyan-400">Bs {(calcLineas(s.fisico.lineas) + calcLineas(s.qr.lineas)).toFixed(0)}</p>
+          </div>
+        </div>
+
         {/* Caja Chica */}
         <div className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 p-6 rounded-2xl shadow-md transition-colors">
           <h3 className="text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest text-xs mb-4">Caja Chica (Base)</h3>
@@ -520,6 +561,20 @@ export default function RendicionDeCuentas() {
           </label>
         </div>
 
+        {/* Notas / Observaciones */}
+        <div className="bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 p-5 rounded-2xl">
+          <h3 className="text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest text-xs mb-3 flex items-center gap-2">
+            <StickyNote size={14} /> Notas u Observaciones (opcional)
+          </h3>
+          <textarea
+            rows={3}
+            value={s.notas || ''}
+            onChange={e => updateState(cat, 'notas', e.target.value)}
+            placeholder="Ej: Talonario azul terminado, 5 fichas de cortesia, problema con QR a las 23:30..."
+            className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 p-3 rounded-xl text-slate-800 dark:text-white text-sm resize-none focus:outline-none focus:border-cyan-500 transition-colors"
+          />
+        </div>
+
         {/* Exportar */}
         <div className="flex gap-4">
           <button onClick={() => exportPDF(cat)} className="flex-1 py-3 bg-red-600 text-white font-bold uppercase text-sm rounded-xl shadow-md hover:bg-red-700 transition-colors flex justify-center items-center gap-2">
@@ -548,6 +603,9 @@ export default function RendicionDeCuentas() {
           </button>
           <button onClick={() => setActiveTab('guardarropia')} className={`px-4 py-2 rounded-lg font-bold uppercase text-xs transition-colors border ${activeTab === 'guardarropia' ? 'bg-cyan-600 dark:bg-cyan-500 text-white border-transparent' : 'bg-transparent text-slate-500 border-slate-300 dark:border-slate-800 hover:text-slate-800 dark:hover:text-white'}`}>
             Guardarropía
+          </button>
+          <button onClick={limpiarTodo} title="Limpiar todo el formulario" className="px-3 py-2 rounded-lg font-bold text-xs transition-colors border border-red-500/40 text-red-500 hover:bg-red-600 hover:text-white flex items-center gap-1">
+            <RotateCcw size={13} /> Limpiar
           </button>
         </div>
       </header>

@@ -1,3 +1,223 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ── TIPOGRAFÍA APPLE-STYLE: Inter desde Google Fonts ─────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+/* ── VARIABLES GLOBALES ───────────────────────────────────────────── */
+:root {
+  /* Colores base — negro verdadero Apple */
+  --color-bg:          #000000;
+  --color-surface:     #0a0a0a;
+  --color-surface-2:   #111111;
+  --color-surface-3:   #1c1c1e;
+  --color-border:      rgba(255,255,255,0.08);
+  --color-border-soft: rgba(255,255,255,0.05);
+
+  /* Acentos */
+  --color-cyan:   #06b6d4;
+  --color-green:  #10b981;
+  --color-purple: #8b5cf6;
+  --color-amber:  #f59e0b;
+  --color-red:    #ef4444;
+
+  /* Tipografía */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', monospace;
+
+  /* Radios */
+  --radius-sm:  10px;
+  --radius-md:  16px;
+  --radius-lg:  22px;
+  --radius-xl:  28px;
+  --radius-pill: 9999px;
+
+  /* Sombras suaves */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.4);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.5);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.6);
+
+  /* Transiciones */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ── MODO CLARO — variables sobreescritas ─────────────────────────── */
+.light {
+  --color-bg:          #f2f2f7;
+  --color-surface:     #ffffff;
+  --color-surface-2:   #f2f2f7;
+  --color-surface-3:   #e5e5ea;
+  --color-border:      rgba(0,0,0,0.08);
+  --color-border-soft: rgba(0,0,0,0.04);
+}
+
+/* ── RESET Y BASE ────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html {
+  font-family: var(--font-sans);
+  /* Previene zoom en inputs en iOS */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: #ffffff;
+  font-family: var(--font-sans);
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11'; /* Inter numeric alternates */
+  /* Scroll suave sin rebote en móvil */
+  overscroll-behavior: none;
+}
+
+/* ── SCROLLBAR PERSONALIZADO ─────────────────────────────────────── */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 3px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.12);
+  border-radius: 9999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.25);
+}
+
+/* ── TOAST TIPO DYNAMIC ISLAND ───────────────────────────────────── */
+.toast-pill {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-80px) scale(0.9);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 9999px;
+  background: rgba(28, 28, 30, 0.96);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 0.5px solid rgba(255,255,255,0.12);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6), 0 0 0 0.5px rgba(255,255,255,0.05);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: #ffffff;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    transform 0.45s var(--ease-spring),
+    opacity 0.3s ease;
+}
+
+.toast-pill.toast-visible {
+  transform: translateX(-50%) translateY(0) scale(1);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.toast-pill.toast-success { border-color: rgba(16, 185, 129, 0.4); }
+.toast-pill.toast-error   { border-color: rgba(239,  68,  68, 0.4); }
+.toast-pill.toast-info    { border-color: rgba(  6, 182, 212, 0.4); }
+.toast-pill.toast-warning { border-color: rgba(245, 158,  11, 0.4); }
+
+.toast-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.toast-success .toast-icon { background: #10b981; }
+.toast-error   .toast-icon { background: #ef4444; }
+.toast-info    .toast-icon { background: #06b6d4; }
+.toast-warning .toast-icon { background: #f59e0b; }
+
+/* ── BUTTONS — Tap targets de 44px mínimo (Apple HIG) ───────────── */
+button {
+  min-height: 44px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+}
+
+/* Excepción para botones icon pequeños */
+button.btn-icon-sm {
+  min-height: 36px;
+}
+
+/* ── LAYOUT LANDSCAPE HELPERS ────────────────────────────────────── */
+@media (orientation: landscape) and (max-height: 500px) {
+  .landscape-compact {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+  .landscape-hide {
+    display: none;
+  }
+  .landscape-row {
+    flex-direction: row !important;
+    gap: 8px;
+  }
+}
+
+/* ── GLASS MORPHISM UTILITY ──────────────────────────────────────── */
+.glass {
+  background: rgba(28, 28, 30, 0.8);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 0.5px solid rgba(255,255,255,0.1);
+}
+
+.glass-light {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 0.5px solid rgba(255,255,255,0.12);
+}
+
+/* ── ANIMACIONES ─────────────────────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.5; }
+}
+
+.animate-fade-up   { animation: fadeUp  0.4s var(--ease-out) both; }
+.animate-scale-in  { animation: scaleIn 0.35s var(--ease-spring) both; }
+.animate-pulse-soft { animation: pulse-soft 2s ease infinite; }
+
+/* ── MEJORAS DE INPUTS EN MÓVIL ──────────────────────────────────── */
+input, textarea, select {
+  font-family: var(--font-sans);
+  /* Previene zoom en iOS al hacer focus en inputs pequeños */
+  font-size: max(16px, 1em);
+}
+
+/* ── PREVENIR SELECCIÓN DE TEXTO EN BOTONES ──────────────────────── */
+button {
+  user-select: none;
+  -webkit-user-select: none;
+}
