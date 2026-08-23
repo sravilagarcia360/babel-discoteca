@@ -33,33 +33,33 @@ export default function App() {
 
   return (
     <div className="min-h-screen transition-colors">
-      <div className="pb-28">
+      <div className="pb-36">
         {currentRoute === 'dashboard' && <Dashboard user={user} />}
         {currentRoute === 'rendicion' && <RendicionDeCuentas user={user} />}
       </div>
       
-      {/* TAB BAR APPLE-STYLE */}
-      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] glass rounded-[28px] p-2 flex gap-2 shadow-2xl border border-white/10 w-[90%] max-w-sm">
+      {/* TAB BAR APPLE-STYLE FULL WIDTH */}
+      <nav className="fixed bottom-0 left-0 right-0 z-[100] bg-slate-950/80 backdrop-blur-xl border-t border-white/10 flex justify-around pb-safe">
         <button 
           onClick={() => setCurrentRoute('dashboard')}
-          className={`flex-1 flex flex-col items-center justify-center py-2.5 px-4 rounded-[20px] transition-all duration-300 ${
+          className={`flex-1 flex flex-col items-center justify-center py-3 transition-all duration-300 ${
             currentRoute === 'dashboard' 
-              ? 'bg-white/10 text-cyan-400 shadow-[0_2px_10px_rgba(6,182,212,0.2)]' 
-              : 'text-slate-400 hover:text-white hover:bg-white/5'
+              ? 'text-cyan-400' 
+              : 'text-slate-500 hover:text-slate-400'
           }`}
         >
-          <LayoutGrid size={22} className="mb-1" />
+          <LayoutGrid size={24} className="mb-1" />
           <span className="text-[10px] font-bold uppercase tracking-wider">Cajas</span>
         </button>
         <button 
           onClick={() => setCurrentRoute('rendicion')}
-          className={`flex-1 flex flex-col items-center justify-center py-2.5 px-4 rounded-[20px] transition-all duration-300 ${
+          className={`flex-1 flex flex-col items-center justify-center py-3 transition-all duration-300 ${
             currentRoute === 'rendicion' 
-              ? 'bg-white/10 text-cyan-400 shadow-[0_2px_10px_rgba(6,182,212,0.2)]' 
-              : 'text-slate-400 hover:text-white hover:bg-white/5'
+              ? 'text-cyan-400' 
+              : 'text-slate-500 hover:text-slate-400'
           }`}
         >
-          <ClipboardList size={22} className="mb-1" />
+          <ClipboardList size={24} className="mb-1" />
           <span className="text-[10px] font-bold uppercase tracking-wider">Rendición</span>
         </button>
       </nav>
