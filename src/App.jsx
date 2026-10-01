@@ -39,7 +39,7 @@ export default function App() {
       </div>
       
       {/* TAB BAR APPLE-STYLE FULL WIDTH */}
-      <nav className="fixed bottom-0 left-0 right-0 z-[100] bg-slate-950/80 backdrop-blur-xl border-t border-white/10 flex justify-around pb-safe">
+      <nav className="fixed bottom-0 left-0 right-0 z-[50] glass-light dark:glass border-t-0 flex justify-around pb-safe">
         <button 
           onClick={() => setCurrentRoute('dashboard')}
           className={`flex-1 flex flex-col items-center justify-center py-3 transition-all duration-300 ${

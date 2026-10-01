@@ -602,8 +602,8 @@ export default function RendicionDeCuentas() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-white pb-24 transition-colors">
-      <header className="sticky top-0 z-40 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-slate-300 dark:border-slate-800 p-4 flex justify-between items-center shadow-md transition-colors">
+    <div className="min-h-screen text-slate-800 dark:text-white pb-24 transition-colors duration-500">
+      <header className="sticky top-0 z-40 glass-light dark:glass border-b-0 p-4 flex justify-between items-center shadow-md transition-all duration-500">
         <div>
           <h1 className="text-xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-cyan-500 dark:from-cyan-400 dark:to-blue-500 uppercase tracking-widest">
             RENDICIÓN

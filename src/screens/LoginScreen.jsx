@@ -33,11 +33,11 @@ export default function LoginScreen() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 dark:bg-slate-950 flex flex-col items-center justify-center p-6 text-slate-800 dark:text-white font-sans overflow-hidden relative transition-colors duration-300">
+    <div className="min-h-screen flex flex-col items-center justify-center p-6 text-slate-800 dark:text-white font-sans overflow-hidden relative transition-colors duration-300">
       <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-500/10 dark:bg-blue-700/20 rounded-full blur-[100px]"></div>
       <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-cyan-500/10 dark:bg-cyan-700/20 rounded-full blur-[100px]"></div>
 
-      <div className="w-full max-w-md bg-white/80 dark:bg-slate-900/80 p-8 rounded-3xl border border-slate-300 dark:border-slate-800 shadow-2xl shadow-slate-300/50 dark:shadow-black/50 backdrop-blur-md relative z-10 transition-colors">
+      <div className="w-full max-w-md glass-light dark:glass rounded-3xl p-8 relative z-10 transition-all duration-500">
         <div className="text-center mb-10">
           <Zap className="mx-auto text-cyan-600 dark:text-cyan-400 mb-4 drop-shadow-[0_0_10px_rgba(8,145,178,0.5)]" size={48} />
           <h1 className="text-5xl font-black text-slate-800 dark:text-white uppercase tracking-widest mb-1 drop-shadow-lg">BABEL</h1>

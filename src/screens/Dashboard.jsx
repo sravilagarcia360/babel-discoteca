@@ -8,6 +8,7 @@ import StatsGrid from '../components/ui/StatsGrid';
 import { useTheme } from '../context/ThemeContext';
 import FichaQRMZ from '../components/ficha/FichaQRMZ';
 import FichaHistorialMZ from '../components/ficha/FichaHistorialMZ';
+import ThemeToggle from '../components/ui/ThemeToggle';
 // --- COMPONENTE: DASHBOARD PRINCIPAL ---
 export default function Dashboard({ user }) {
   const [activeTab, setActiveTab] = useState('efectivo'); // 'efectivo' o 'qr'
@@ -824,8 +825,8 @@ export default function Dashboard({ user }) {
   const { theme, toggleTheme } = useTheme();
 
   const panelFichasPendientes = (
-    <section className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-3xl p-6 shadow-md shadow-slate-300/50 dark:shadow-black/20 transition-colors flex flex-col h-[350px] w-full">
-      <h2 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2 shrink-0">
+    <section className="glass-light dark:glass rounded-3xl p-6 relative overflow-hidden transition-all duration-500 flex flex-col h-[350px] w-full">
+      <h2 className="text-sm font-bold text-slate-500 dark:text-slate-300 uppercase tracking-widest mb-4 flex items-center gap-2 shrink-0">
         <Clock size={16} className="text-cyan-600 dark:text-cyan-400" /> Fichas Pendientes (Enviadas a QR)
       </h2>
 
@@ -862,10 +863,10 @@ export default function Dashboard({ user }) {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-white font-sans pb-24 overflow-x-hidden selection:bg-cyan-500/30 transition-colors duration-300">
+    <div className="min-h-screen text-slate-800 dark:text-white font-sans pb-24 overflow-x-hidden selection:bg-cyan-500/30 transition-colors duration-300">
       
-      <header className="sticky top-0 z-50 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-slate-300 dark:border-slate-800 p-4 flex flex-row flex-wrap sm:flex-nowrap justify-between items-center gap-4 shadow-md shadow-slate-300/50 dark:shadow-black/20 transition-colors">
-        <h1 className="text-xl sm:text-2xl font-black uppercase tracking-widest text-slate-800 dark:text-white shrink-0">
+      <header className="sticky top-0 z-50 glass-light dark:glass border-b border-white/20 dark:border-white/10 p-4 flex flex-row flex-wrap sm:flex-nowrap justify-between items-center gap-4 transition-all duration-500">
+        <h1 className="text-xl sm:text-2xl font-black uppercase tracking-widest text-slate-800 dark:text-white shrink-0 drop-shadow-md">
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-500 dark:from-cyan-400 dark:to-blue-500">BABEL</span>
         </h1>
 
@@ -884,16 +885,14 @@ export default function Dashboard({ user }) {
           </button>
         </div>
 
-        <div className="flex gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           <button onClick={() => {
             setFormAppSettings({ precios: (settings.preciosEntrada || [30, 40]).join(', ') });
             setShowAppSettings(true);
           }} className="text-slate-500 hover:text-cyan-600 dark:text-slate-400 dark:hover:text-cyan-400 transition-colors p-2 bg-slate-200 dark:bg-slate-900 rounded-full border border-slate-300 dark:border-slate-800 shadow-sm" title="Ajustes de Sistema">
             <Settings size={20} />
           </button>
-          <button onClick={toggleTheme} className="text-slate-500 hover:text-cyan-600 dark:text-slate-400 dark:hover:text-cyan-400 transition-colors p-2 bg-slate-200 dark:bg-slate-900 rounded-full border border-slate-300 dark:border-slate-800 shadow-sm" title="Cambiar Tema">
-            {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
-          </button>
+          <ThemeToggle />
           <button onClick={() => signOut(auth)} className="text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 transition-colors p-2 bg-slate-200 dark:bg-slate-900 rounded-full border border-slate-300 dark:border-slate-800 hover:border-red-500/50 dark:hover:border-red-500/50 shadow-sm" title="Cerrar Sesión">
             <LogOut size={20} />
           </button>
@@ -905,7 +904,7 @@ export default function Dashboard({ user }) {
         <div className="sm:col-span-6 lg:col-span-7 space-y-4 sm:space-y-8">
 
           {activeTab === 'efectivo' && (
-            <section className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-3xl p-6 shadow-md shadow-slate-300/50 dark:shadow-black/20 relative overflow-hidden transition-colors">
+            <section className="glass-light dark:glass rounded-3xl p-6 relative overflow-hidden transition-all duration-500">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
                 <h2 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest flex items-center gap-2"><Plus size={16} className="text-cyan-600 dark:text-cyan-500" /> Nuevo Cobro</h2>
                 <div className="flex items-center gap-2">
@@ -1009,7 +1008,7 @@ export default function Dashboard({ user }) {
 
         {/* COLUMNA DERECHA (Historial) */}
         <div className="sm:col-span-6 lg:col-span-5 flex flex-col gap-6">
-          <div className="bg-slate-100/50 dark:bg-slate-900/50 border border-slate-300 dark:border-slate-800 rounded-3xl p-4 sm:p-6 flex flex-col transition-colors h-[350px] lg:h-[80vh]">
+          <div className="glass-light dark:glass rounded-3xl p-4 sm:p-6 flex flex-col transition-all duration-500 h-[350px] lg:h-[80vh]">
             <div className="flex flex-col gap-4 mb-6 shrink-0">
               <div className="flex justify-between items-center">
                 <h2 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Historial de {activeTab}</h2>
